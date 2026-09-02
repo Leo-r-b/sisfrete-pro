@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-08-28T14:57:52.085Z",
+  "fretes": [],
+  "motoristas": [],
+  "clientes": [],
+  "empresa": [
+    {
+      "id": 1,
+      "razao_social": "LOGÍSTICA & TRANSPORTES BRASIL LTDA",
+      "nome_fantasia": "LogBrasil Agenciamento",
+      "cnpj": "34.123.456/0001-89",
+      "telefone": "(11) 98765-4321",
+      "email": "contato@logbrasil.com.br",
+      "chave_pix": "34123456000189",
+      "banco": null,
+      "agencia": null,
+      "conta": null,
+      "cidade": "São Paulo",
+      "uf": "SP",
+      "percentual_adiantamento_padrao": 70,
+      "updated_at": "2026-08-27 18:48:14"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "name": "Administrador",
+      "email": "admin@sisfrete.com",
+      "role": "admin",
+      "created_at": "2026-08-27 18:48:14"
+    },
+    {
+      "id": 2,
+      "name": "Operador Logístico",
+      "email": "operador@sisfrete.com",
+      "role": "operador",
+      "created_at": "2026-08-27 18:48:14"
+    }
+  ],
+  "adiantamentos": []
+}
