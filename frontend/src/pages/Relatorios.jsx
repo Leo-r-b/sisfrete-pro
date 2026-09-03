@@ -74,6 +74,7 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   const [relResumoSimplificado, setRelResumoSimplificado] = useState({ totais: {}, itens: [], fornecedores: [], texto_whatsapp: '' });
   const [copiedWhatsAppResumo, setCopiedWhatsAppResumo] = useState(false);
   const [copiedLinhaId, setCopiedLinhaId] = useState(null);
+  const [modoTextoWhatsApp, setModoTextoWhatsApp] = useState('blocos'); // 'blocos' | 'linhas'
 
   const [relRepasses, setRelRepasses] = useState({ totais: {}, fretes: [] });
   const [relDre, setRelDre] = useState({ totais: {}, viagens: [] });
@@ -391,10 +392,28 @@ ${viagensTxt}
     setTimeout(() => setCopiedMsg(false), 3000);
   };
 
+  // Gerar Texto de WhatsApp Limpo, Organizado, Sem Emojis e com *Negrito*
+  const getTextoWhatsAppFinal = () => {
+    const nomeFornecHeader = fornecedorFiltro && fornecedorFiltro !== 'todos' ? fornecedorFiltro : 'Todos';
+    const vTotCte = Number(relResumoSimplificado.totais?.total_valor_cte || 0);
+    const vTotFora = Number(relResumoSimplificado.totais?.total_por_fora || 0);
+    const vTotGeral = Number(relResumoSimplificado.totais?.total_geral || 0);
+    const qtdCtes = (relResumoSimplificado.itens || []).length;
+
+    if (modoTextoWhatsApp === 'blocos') {
+      const blocos = (relResumoSimplificado.itens || []).map(i => i.texto_formatado_bloco || i.texto_formatado).join('\n\n');
+      return `*RESUMO DE CT-ES EM ABERTO*\n*Fornecedor:* ${nomeFornecHeader}\n----------------------------------------\n\n${blocos}\n\n----------------------------------------\n*TOTALIZADORES (${qtdCtes} CT-es)*\nTotal Fiscal: ${formatMoney(vTotCte)}\nTotal Por Fora: ${formatMoney(vTotFora)}\n*VALOR TOTAL A PAGAR: ${formatMoney(vTotGeral)}*\n----------------------------------------`;
+    } else {
+      const linhas = (relResumoSimplificado.itens || []).map(i => i.texto_formatado).join('\n');
+      return `*RESUMO DE CT-ES EM ABERTO*\n*Fornecedor:* ${nomeFornecHeader}\n----------------------------------------\n${linhas}\n----------------------------------------\n*TOTALIZADORES (${qtdCtes} CT-es)*\nTotal Fiscal: ${formatMoney(vTotCte)}\nTotal Por Fora: ${formatMoney(vTotFora)}\n*VALOR TOTAL A PAGAR: ${formatMoney(vTotGeral)}*\n----------------------------------------`;
+    }
+  };
+
   // Copiar Resumo Completo de CT-e para WhatsApp do Fornecedor
   const handleCopyWhatsAppResumo = () => {
-    if (!relResumoSimplificado.texto_whatsapp) return;
-    navigator.clipboard.writeText(relResumoSimplificado.texto_whatsapp);
+    const texto = getTextoWhatsAppFinal();
+    if (!texto) return;
+    navigator.clipboard.writeText(texto);
     setCopiedWhatsAppResumo(true);
     setTimeout(() => setCopiedWhatsAppResumo(false), 3000);
   };
@@ -761,7 +780,7 @@ ${viagensTxt}
                 title="Copiar texto formatado pronto para envio no WhatsApp"
               >
                 {copiedWhatsAppResumo ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
-                <span>{copiedWhatsAppResumo ? 'Copiado para WhatsApp! ✓' : 'Copiar Texto para WhatsApp'}</span>
+                <span>{copiedWhatsAppResumo ? 'Copiado para WhatsApp!' : 'Copiar Texto para WhatsApp'}</span>
               </button>
 
               <button
@@ -823,15 +842,41 @@ ${viagensTxt}
             </div>
           </div>
 
-          {/* PRÉ-VISUALIZAÇÃO DO TEXTO WHATSAPP (EXATAMENTE COMO O EXEMPLO DO USUÁRIO) */}
-          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 print:hidden space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Share2 className="h-4 w-4 text-emerald-400" />
-                <span className="text-xs font-bold text-white uppercase tracking-wider">
-                  Formato de Texto para WhatsApp (Pronto para envio):
+          {/* PRÉ-VISUALIZAÇÃO DO TEXTO WHATSAPP (SEM EMOJIS, NEGRITO EM *TEXTO* E ULTRA LIMPO) */}
+          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 print:hidden space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Share2 className="h-4 w-4 text-emerald-400" />
+                  Formato de Texto para WhatsApp:
                 </span>
+
+                <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setModoTextoWhatsApp('blocos')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                      modoTextoWhatsApp === 'blocos'
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Blocos Estruturados
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModoTextoWhatsApp('linhas')}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                      modoTextoWhatsApp === 'linhas'
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Linha Única
+                  </button>
+                </div>
               </div>
+
               <button
                 type="button"
                 onClick={handleCopyWhatsAppResumo}
@@ -841,8 +886,8 @@ ${viagensTxt}
                 <span>{copiedWhatsAppResumo ? 'Copiado!' : 'Copiar Tudo'}</span>
               </button>
             </div>
-            <pre className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 whitespace-pre-wrap select-all">
-              {relResumoSimplificado.texto_whatsapp || 'Nenhum frete encontrado com os filtros selecionados.'}
+            <pre className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-200 whitespace-pre-wrap select-all leading-relaxed">
+              {getTextoWhatsAppFinal() || 'Nenhum frete encontrado com os filtros selecionados.'}
             </pre>
           </div>
 
@@ -909,15 +954,15 @@ ${viagensTxt}
                         <td className="px-3 py-2 text-center">
                           {item.status === 'quitado' ? (
                             <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 print:text-slate-900 print:bg-transparent font-bold">
-                              Quitado ✅
+                              Quitado
                             </span>
                           ) : item.status === 'parcial' ? (
                             <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 print:text-slate-900 print:bg-transparent font-bold">
-                              Parcial ⏳
+                              Parcial
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 print:text-slate-900 print:bg-transparent font-bold">
-                              Em Aberto ⚠️
+                              Em Aberto
                             </span>
                           )}
                         </td>
@@ -927,7 +972,7 @@ ${viagensTxt}
                             <button
                               type="button"
                               onClick={() => handleCopyLinhaWhatsApp(item)}
-                              className="px-2 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
                               title="Copiar linha para WhatsApp"
                             >
                               {copiedLinhaId === item.id ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}

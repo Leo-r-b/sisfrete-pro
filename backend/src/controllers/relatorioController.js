@@ -1318,7 +1318,8 @@ const getRelatorioResumoSimplificado = (req, res) => {
         ? `${f.numero_cte || 'S/N'} + ${f.numero_cte_2}` 
         : (f.numero_cte || 'S/N');
 
-      const textoFormatado = `CT-e ${numCteStr} - Valor CT-e: ${helperFormatMoney(vCteTotal)} | Por fora: ${helperFormatMoney(vPorFora)} | Valor total: ${helperFormatMoney(vTotalCarga)}`;
+      const textoFormatadoLinha = `*CT-e ${numCteStr}* | Valor Fiscal: ${helperFormatMoney(vCteTotal)} | Por Fora: ${helperFormatMoney(vPorFora)} | *Total: ${helperFormatMoney(vTotalCarga)}*`;
+      const textoFormatadoBloco = `*CT-e ${numCteStr}*\nValor Fiscal: ${helperFormatMoney(vCteTotal)}\nPor Fora: ${helperFormatMoney(vPorFora)}\n*Total: ${helperFormatMoney(vTotalCarga)}*`;
 
       itens.push({
         id: f.id,
@@ -1336,7 +1337,8 @@ const getRelatorioResumoSimplificado = (req, res) => {
         valor_pago: vPago,
         saldo_pendente: saldoPendente,
         status: statusFinal,
-        texto_formatado: textoFormatado
+        texto_formatado: textoFormatadoLinha,
+        texto_formatado_bloco: textoFormatadoBloco
       });
     }
 
@@ -1371,10 +1373,21 @@ const getRelatorioResumoSimplificado = (req, res) => {
     const totalPago = Number(filtrados.reduce((acc, i) => acc + i.valor_pago, 0).toFixed(2));
     const totalSaldoPendente = Number(filtrados.reduce((acc, i) => acc + i.saldo_pendente, 0).toFixed(2));
 
-    // Montagem do texto WhatsApp consolidado
-    const linhasWhatsApp = filtrados.map(i => i.texto_formatado).join('\n');
-    const nomeFornecHeader = fornecedor && fornecedor !== 'todos' ? ` - Fornecedor: ${fornecedor}` : '';
-    const textoWhatsAppCompleto = `*Resumos CT-e em aberto${nomeFornecHeader}*\n\n${linhasWhatsApp}\n\n---------------------------------------------\nTotal CT-e: ${helperFormatMoney(totalValorCte)} | Por fora: ${helperFormatMoney(totalPorFora)}\n*Valor total: ${helperFormatMoney(totalGeral)}*`;
+    // Montagem do texto WhatsApp consolidado (limpo, organizado, sem emojis e com *negrito*)
+    const blocosWhatsApp = filtrados.map(i => i.texto_formatado_bloco).join('\n\n');
+    const nomeFornecHeader = fornecedor && fornecedor !== 'todos' ? fornecedor : 'Todos';
+
+    const textoWhatsAppCompleto = 
+      `*RESUMO DE CT-ES EM ABERTO*\n` +
+      `*Fornecedor:* ${nomeFornecHeader}\n` +
+      `----------------------------------------\n\n` +
+      `${blocosWhatsApp}\n\n` +
+      `----------------------------------------\n` +
+      `*TOTALIZADORES (${filtrados.length} CT-es)*\n` +
+      `Total Fiscal: ${helperFormatMoney(totalValorCte)}\n` +
+      `Total Por Fora: ${helperFormatMoney(totalPorFora)}\n` +
+      `*VALOR TOTAL A PAGAR: ${helperFormatMoney(totalGeral)}*\n` +
+      `----------------------------------------`;
 
     return res.json({
       fornecedores: Array.from(fornecedoresSet).sort(),
