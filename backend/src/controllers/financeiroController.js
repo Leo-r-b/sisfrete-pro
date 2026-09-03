@@ -474,6 +474,9 @@ const listTitulos = (req, res) => {
                 pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
+                placa_veiculo: f.placa_veiculo,
+                valor_frete_real: valorTotalFreteiro,
+                tipo_parcela: 'fiscal',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
@@ -506,6 +509,9 @@ const listTitulos = (req, res) => {
                 pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
+                placa_veiculo: f.placa_veiculo,
+                valor_frete_real: valorTotalFreteiro,
+                tipo_parcela: 'complemento',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
@@ -539,6 +545,9 @@ const listTitulos = (req, res) => {
                 pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
+                placa_veiculo: f.placa_veiculo,
+                valor_frete_real: valorTotalFreteiro,
+                tipo_parcela: 'unico',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
@@ -573,6 +582,9 @@ const listTitulos = (req, res) => {
                 pessoa_documento: f.destinatario_comissao_doc || '',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
+                placa_veiculo: f.placa_veiculo,
+                valor_frete_real: valorTotalFreteiro,
+                tipo_parcela: 'comissao',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
@@ -598,13 +610,16 @@ const listTitulos = (req, res) => {
                 empresa_id: empresaId,
                 tipo: 'pagar',
                 origem: 'frete_cte',
-                categoria: 'repasse_agenciamento',
-                categoria_nome: 'Repasse de Agenciamento',
-                descricao: `Repasse Financeiro CT-e Nº ${f.numero_cte || 'S/N'} ${f.numero_cte_2 ? '+ Nº ' + f.numero_cte_2 : ''}`,
-                pessoa_nome: f.destinatario_repasse_nome || f.cliente_nome || 'Embarcador / Parceiro',
+                categoria: 'repasse_embarcador',
+                categoria_nome: 'Repasse Financeiro / Embarcador',
+                descricao: `Repasse Financeiro CT-e Nº ${f.numero_cte || 'S/N'}`,
+                pessoa_nome: f.destinatario_repasse_nome || 'Destinatário do Repasse',
                 pessoa_documento: f.destinatario_repasse_doc || '',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
+                placa_veiculo: f.placa_veiculo,
+                valor_frete_real: valorTotalFreteiro,
+                tipo_parcela: 'repasse',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
@@ -659,7 +674,12 @@ const listTitulos = (req, res) => {
         (t.descricao && t.descricao.toLowerCase().includes(q)) ||
         (t.pessoa_nome && t.pessoa_nome.toLowerCase().includes(q)) ||
         (t.categoria_nome && t.categoria_nome.toLowerCase().includes(q)) ||
-        (t.forma_pagamento && t.forma_pagamento.toLowerCase().includes(q))
+        (t.forma_pagamento && t.forma_pagamento.toLowerCase().includes(q)) ||
+        (t.numero_cte && String(t.numero_cte).toLowerCase().includes(q)) ||
+        (t.numero_cte_2 && String(t.numero_cte_2).toLowerCase().includes(q)) ||
+        (t.cliente_nome && t.cliente_nome.toLowerCase().includes(q)) ||
+        (t.motorista_nome && t.motorista_nome.toLowerCase().includes(q)) ||
+        (t.placa_veiculo && t.placa_veiculo.toLowerCase().includes(q))
       );
     }
 

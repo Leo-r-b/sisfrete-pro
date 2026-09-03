@@ -412,6 +412,33 @@ _Favor enviar o comprovante de pagamento após a transferência._
       );
     }
 
+    if (cat === 'frete_motorista') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-950/40 border border-blue-500/40 text-blue-300 shadow-sm" title="Frete Terceiro (Valor do CT-e)">
+          <Truck className="h-3 w-3 text-blue-400" />
+          <span>Frete CT-e Fiscal</span>
+        </span>
+      );
+    }
+
+    if (cat === 'comissao_agenciamento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-950/40 border border-purple-500/40 text-purple-300 shadow-sm" title="Comissão de Agenciamento">
+          <DollarSign className="h-3 w-3 text-purple-400" />
+          <span>Comissão Agenciamento</span>
+        </span>
+      );
+    }
+
+    if (cat === 'repasse_embarcador' || cat === 'repasse_agenciamento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-950/40 border border-indigo-500/40 text-indigo-300 shadow-sm" title="Repasse Financeiro / Embarcador">
+          <Repeat className="h-3 w-3 text-indigo-400" />
+          <span>Repasse Embarcador</span>
+        </span>
+      );
+    }
+
     if (cat === 'faturamento_frete') {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-emerald-950/40 border border-emerald-500/40 text-emerald-300">
@@ -444,6 +471,444 @@ _Favor enviar o comprovante de pagamento após a transferência._
         <IconComponent className="h-3 w-3 text-blue-400" />
         <span>{nome || cat}</span>
       </span>
+    );
+  };
+
+  // ─── Agrupamento estruturado por Frete / CT-e (ou avulsos) ───────────────
+  const titulosFiltrados = titulos.filter(t => t.tipo === activeSubTab);
+
+  const gruposTitulos = [];
+  const fretesMap = new Map();
+
+  for (const t of titulosFiltrados) {
+    if (t.is_frete && t.frete_id) {
+      if (!fretesMap.has(t.frete_id)) {
+        const novoGrupo = {
+          key: `frete_${t.frete_id}`,
+          is_frete: true,
+          frete_id: t.frete_id,
+          numero_cte: t.numero_cte,
+          numero_cte_2: t.numero_cte_2,
+          is_triangular: t.is_triangular,
+          motorista_nome: t.motorista_nome || t.pessoa_nome,
+          cliente_nome: t.cliente_nome,
+          cliente_nome_2: t.cliente_nome_2,
+          placa_veiculo: t.placa_veiculo,
+          titulos: []
+        };
+        fretesMap.set(t.frete_id, novoGrupo);
+        gruposTitulos.push(novoGrupo);
+      }
+      fretesMap.get(t.frete_id).titulos.push(t);
+    } else {
+      gruposTitulos.push({
+        key: `avulso_${t.id}`,
+        is_frete: false,
+        titulos: [t]
+      });
+    }
+  }
+
+  const accentBorderColor = activeSubTab === 'receber' ? 'border-l-emerald-500' : 'border-l-blue-500';
+
+  const renderTituloRow = (t, isInsideFreteGroup, isLastInGroup, isMultiplasParcelas) => {
+    const valorTotal = Number(t.valor || 0);
+    const valorPago = Number(t.valor_pago || 0);
+    const saldoPendente = Math.max(0, Number((valorTotal - valorPago).toFixed(2)));
+
+    const isQuitado = (t.status === 'pago' || t.status === 'recebido') || (valorPago >= valorTotal - 0.01 && valorTotal > 0);
+    const isParcial = !isQuitado && valorPago > 0;
+    const isPendente = !isQuitado && !isParcial;
+    const isVencido = !isQuitado && t.data_vencimento && t.data_vencimento < new Date().toISOString().slice(0, 10);
+
+    const isPorFora = t.tipo_parcela === 'complemento' || t.categoria === 'frete_complemento' || t.descricao?.toLowerCase().includes('por fora');
+    const isFiscal = t.tipo_parcela === 'fiscal' || (t.categoria === 'frete_motorista' && isMultiplasParcelas);
+    const isComissao = t.tipo_parcela === 'comissao' || t.categoria === 'comissao_agenciamento';
+    const isRepasse = t.tipo_parcela === 'repasse' || t.categoria === 'repasse_embarcador';
+
+    return (
+      <React.Fragment key={t.id}>
+        <tr className={`hover:bg-slate-800/40 transition border-l-4 ${
+          isInsideFreteGroup ? accentBorderColor : 'border-l-slate-700'
+        } ${
+          isLastInGroup 
+            ? (isInsideFreteGroup ? 'border-b-4 border-slate-950 shadow-sm' : 'border-b border-slate-800') 
+            : 'border-b border-slate-800/40 border-dashed'
+        }`}>
+        
+          {/* Descrição & Origem */}
+          <td className="px-3 py-2.5">
+            {isPorFora ? (
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-amber-400 font-black text-sm leading-none mt-0.5">↳</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Layers className="h-2.5 w-2.5" />
+                      Frete Por Fora (Excedente)
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                  <span className="text-[9.5px] text-amber-300/70 block">
+                    Diferença acordada s/ CT-e Fiscal
+                  </span>
+                </div>
+              </div>
+            ) : isFiscal ? (
+              <div className="flex items-start gap-1.5 py-0.5">
+                <span className="text-blue-400 font-black text-xs mt-0.5">1.</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Truck className="h-2.5 w-2.5" />
+                      CT-e Fiscal
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                  <span className="text-[9.5px] text-blue-300/70 block">
+                    Valor oficial acobertado pelo CT-e
+                  </span>
+                </div>
+              </div>
+            ) : isComissao ? (
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-purple-400 font-black text-sm leading-none mt-0.5">↳</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <DollarSign className="h-2.5 w-2.5" />
+                      Comissão Agenciamento
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : isRepasse ? (
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-indigo-400 font-black text-sm leading-none mt-0.5">↳</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Repeat className="h-2.5 w-2.5" />
+                      Repasse Financeiro
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : t.is_triangular ? (
+              <div className="space-y-1">
+                <div className="p-1 rounded bg-indigo-950/40 border border-indigo-500/30 text-[10px]">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-indigo-300 font-mono">1: Nº {t.numero_cte || 'S/N'}</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_1 || t.valor)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-indigo-900/50">
+                    <span className="font-bold text-purple-300 font-mono">2: Nº {t.numero_cte_2 || 'S/N'}</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_2)}</span>
+                  </div>
+                </div>
+                <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[8.5px] font-bold inline-block">
+                  🔄 Triangular (2 CT-es)
+                </span>
+              </div>
+            ) : (
+              <div>
+                <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>{t.descricao}</p>
+                <span className="text-[10px] text-slate-400">
+                  {t.is_frete ? '🚚 Vinculado a Frete' : '🏢 Despesa / Título Avulso'}
+                </span>
+              </div>
+            )}
+          </td>
+
+          {/* Categoria */}
+          <td className="px-3 py-2.5 whitespace-nowrap">
+            {getCategoriaBadge(t.categoria, t.categoria_nome)}
+          </td>
+
+          {/* Pessoa / Fornecedor / Tomador */}
+          <td className="px-3 py-2.5">
+            {t.tipo === 'receber' && t.is_triangular ? (
+              <div className="space-y-0.5 text-[11px]">
+                <p className="font-medium text-indigo-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
+                <p className="font-medium text-purple-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="font-medium text-slate-200 truncate max-w-[160px] lg:max-w-[220px]" title={t.pessoa_nome}>{t.pessoa_nome || '-'}</p>
+                {t.forma_pagamento && (
+                  <p className="text-[10px] text-slate-400 font-mono">{t.forma_pagamento}</p>
+                )}
+              </div>
+            )}
+          </td>
+
+          {/* Vencimento */}
+          <td className="px-3 py-2.5 whitespace-nowrap">
+            <p className={`font-semibold font-mono ${isVencido ? 'text-rose-400' : 'text-slate-300'}`}>
+              {t.data_vencimento ? new Date(t.data_vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+            </p>
+            {isVencido && <span className="text-[9px] text-rose-400 font-bold block">Vencido</span>}
+          </td>
+
+          {/* Valor */}
+          <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
+            <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {formatMoney(valorTotal)}
+            </span>
+            {t.is_triangular && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
+              <span className="text-[8.5px] text-slate-400 block font-normal">
+                (CT-es: {formatMoney(t.valor_cte_1)} | {formatMoney(t.valor_cte_2)})
+              </span>
+            )}
+            {valorPago > 0 && !isQuitado && (
+              <span className="text-[10px] text-emerald-400 block font-medium">Pago: {formatMoney(valorPago)}</span>
+            )}
+            {isParcial && saldoPendente > 0 && (
+              <span className="text-[10px] text-amber-400 block font-bold">Saldo: {formatMoney(saldoPendente)}</span>
+            )}
+          </td>
+
+          {/* Status com Botão de Extrato de Baixas */}
+          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+            {isQuitado ? (
+              <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+                <CheckCircle2 className="h-3 w-3" />
+                <span>{t.tipo === 'receber' ? 'Recebido 100%' : 'Quitado 100%'}</span>
+              </span>
+            ) : isParcial ? (
+              <span className="px-2.5 py-1 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+                <Clock className="h-3 w-3" />
+                <span>Parcial ({formatMoney(valorPago)})</span>
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+                <Clock className="h-3 w-3" />
+                <span>Pendente</span>
+              </span>
+            )}
+
+            {/* Botão de Histórico de Baixas Parciais */}
+            <button
+              type="button"
+              onClick={() => toggleExpandTitulo(t.id)}
+              className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 mx-auto px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 transition cursor-pointer"
+              title="Ver histórico detalhado de parcelas e pagamentos parciais"
+            >
+              {expandedTituloIds.has(t.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              <span>{t.quantidade_baixas > 0 ? `${t.quantidade_baixas} Baixa(s)` : 'Ver Extrato'}</span>
+            </button>
+          </td>
+
+          {/* Ações Rápidas: Baixar, Recibo, WhatsApp, Excluir */}
+          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+              
+              {/* Botão de Baixa / Pagamento */}
+              {!isQuitado ? (
+                <button
+                  onClick={() => handleOpenBaixa(t)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                    isParcial 
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950' 
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
+                  }`}
+                  title="Registrar Pagamento / Baixar Título"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  <span>{isParcial ? `Pagar Saldo (${formatMoney(saldoPendente)})` : (t.tipo === 'receber' ? 'Receber' : 'Quitar')}</span>
+                </button>
+              ) : (
+                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Quitado</span>
+                </span>
+              )}
+
+              {/* Botão Recibo Oficial */}
+              {t.frete_id && onOpenRecibo && (
+                <button
+                  onClick={() => handleOpenReciboFromTitulo(t)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[11px] font-bold"
+                  title="Imprimir Recibo Oficial (Visão Empresa ou Motorista)"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Recibo</span>
+                </button>
+              )}
+
+              {/* Botão WhatsApp Cobrança / PIX */}
+              <button
+                onClick={() => {
+                  setWhatsAppModalFinanceiro(t);
+                  setCopiedWhatsApp(false);
+                  setWhatsappTelefone('');
+                }}
+                className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition cursor-pointer shrink-0"
+                title={t.tipo === 'receber' ? 'Enviar cobrança com chave PIX no WhatsApp' : 'Enviar comprovante / acerto no WhatsApp'}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+              </button>
+
+              {/* Botão Excluir */}
+              <button
+                onClick={() => setTituloParaExcluir(t)}
+                className="p-1 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 transition cursor-pointer shrink-0"
+                title="Excluir Lançamento"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </td>
+
+        </tr>
+
+        {/* SUB-LINHA EXPANSÍVEL: HISTÓRICO COMPLETO DE BAIXAS PARCIAIS */}
+        {expandedTituloIds.has(t.id) && (
+          <tr key={`extrato_${t.id}`} className="bg-slate-950/90 border-b border-slate-800">
+            <td colSpan={7} className="px-4 py-4 sm:px-6">
+              <div className="rounded-2xl bg-slate-900/90 border border-slate-700/80 p-4 space-y-3.5 shadow-2xl">
+                {/* Header do Accordion */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-blue-400" />
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Histórico de Baixas & Pagamentos
+                      </h4>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30 font-mono font-bold">
+                        {t.historico_baixas?.length || 0} lançamento(s)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Título: <strong className="text-slate-200">{t.descricao}</strong> | Favorecido: <strong className="text-slate-200">{t.pessoa_nome || '-'}</strong>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!isQuitado && (
+                      <button
+                        onClick={() => handleOpenBaixa(t)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950 transition cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Lançar Nova Baixa ({formatMoney(saldoPendente)})</span>
+                      </button>
+                    )}
+                    {t.frete_id && onOpenRecibo && (
+                      <button
+                        onClick={() => handleOpenReciboFromTitulo(t)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs transition cursor-pointer"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        <span>Imprimir Recibo</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Barra de Progresso Visual de Quitação */}
+                <div className="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <div className="flex justify-between items-center text-[11px] font-mono">
+                    <span className="text-slate-400">
+                      Total do Título: <strong className="text-white">{formatMoney(valorTotal)}</strong>
+                    </span>
+                    <span className="text-emerald-400">
+                      Total Pago: <strong className="font-bold">{formatMoney(valorPago)}</strong> ({t.percentual_pago || 0}%)
+                    </span>
+                    <span className={saldoPendente > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                      {saldoPendente > 0 ? `Saldo Pendente: ${formatMoney(saldoPendente)}` : '✅ 100% Liquidado'}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-500 ${
+                        isQuitado ? 'bg-emerald-500' : isParcial ? 'bg-indigo-500' : 'bg-slate-700'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(0, t.percentual_pago || 0))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Tabela de Baixas */}
+                {t.historico_baixas && t.historico_baixas.length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="bg-slate-800/60 uppercase text-[9.5px] font-bold text-slate-400 border-b border-slate-800">
+                        <tr>
+                          <th className="py-2 px-3">Data</th>
+                          <th className="py-2 px-3">Tipo / Parcela</th>
+                          <th className="py-2 px-3">Forma</th>
+                          <th className="py-2 px-3">Comprovante / Autenticação</th>
+                          <th className="py-2 px-3">Observações</th>
+                          <th className="py-2 px-3 text-right">Valor Pago</th>
+                          <th className="py-2 px-3 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-850 font-mono">
+                        {t.historico_baixas.map((bx, idx) => (
+                          <tr key={bx.id || idx} className="hover:bg-slate-800/30 transition">
+                            <td className="py-2 px-3 text-slate-200">
+                              {bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-blue-300 border border-slate-700 font-sans font-semibold">
+                                {bx.tipo_parcela === 'por_fora' ? '💼 Frete Por Fora' : bx.tipo_parcela === 'fiscal' ? '📄 Parcela CT-e' : bx.tipo_parcela === 'repasse' ? '🔄 Repasse' : bx.tipo_parcela === 'comissao' ? '📈 Comissão' : '💵 Baixa Parcial'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-slate-300 font-sans">
+                              {bx.forma_pagamento || 'PIX'}
+                            </td>
+                            <td className="py-2 px-3 text-slate-400 font-sans">
+                              {bx.comprovante_ref ? (
+                                <span className="text-slate-300 font-mono text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                                  {bx.comprovante_ref}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 italic text-[10px]">-</span>
+                              )}
+                            </td>
+                            <td className="py-2 px-3 text-slate-400 font-sans max-w-[150px] truncate" title={bx.observacoes}>
+                              {bx.observacoes || '-'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-emerald-400 text-xs">
+                              {formatMoney(bx.valor)}
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {typeof bx.id === 'number' && (
+                                <button
+                                  onClick={() => handleEstornarBaixa(bx.id)}
+                                  className="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                                  title="Estornar este pagamento e estornar saldo"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-slate-500 text-xs italic bg-slate-950/30 rounded-xl border border-dashed border-slate-800">
+                    Nenhuma baixa parcial registrada até o momento para este lançamento.
+                  </div>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
     );
   };
 
@@ -908,332 +1373,108 @@ _Favor enviar o comprovante de pagamento após a transferência._
                       </div>
                     </td>
                   </tr>
-                ) : titulos.filter(t => t.tipo === activeSubTab).length > 0 ? (
-                  titulos.filter(t => t.tipo === activeSubTab).map((t) => {
-                    const valorTotal = Number(t.valor || 0);
-                    const valorPago = Number(t.valor_pago || 0);
-                    const saldoPendente = Math.max(0, Number((valorTotal - valorPago).toFixed(2)));
+                ) : gruposTitulos.length > 0 ? (
+                  gruposTitulos.map((grupo) => {
+                    if (grupo.is_frete) {
+                      const totalValorGrupo = grupo.titulos.reduce((acc, item) => acc + Number(item.valor || 0), 0);
+                      const totalPagoGrupo = grupo.titulos.reduce((acc, item) => acc + Number(item.valor_pago || 0), 0);
+                      const saldoPendenteGrupo = Math.max(0, Number((totalValorGrupo - totalPagoGrupo).toFixed(2)));
+                      const isGrupoQuitado = saldoPendenteGrupo <= 0.01 && totalValorGrupo > 0;
+                      const isGrupoParcial = !isGrupoQuitado && totalPagoGrupo > 0;
+                      const isMultiplasParcelas = grupo.titulos.length > 1;
 
-                    const isQuitado = (t.status === 'pago' || t.status === 'recebido') || (valorPago >= valorTotal - 0.01 && valorTotal > 0);
-                    const isParcial = !isQuitado && valorPago > 0;
-                    const isPendente = !isQuitado && !isParcial;
-                    const isVencido = !isQuitado && t.data_vencimento && t.data_vencimento < new Date().toISOString().slice(0, 10);
-
-                    return (
-                      <React.Fragment key={t.id}>
-                        <tr className="hover:bg-slate-800/40 transition">
-                        
-                        {/* Descrição & Origem */}
-                        <td className="px-3 py-2.5">
-                          {t.is_triangular ? (
-                            <div className="space-y-1">
-                              <div className="p-1 rounded bg-indigo-950/40 border border-indigo-500/30 text-[10px]">
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="font-bold text-indigo-300 font-mono">1: Nº {t.numero_cte || 'S/N'}</span>
-                                  <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_1 || t.valor)}</span>
+                      return (
+                        <React.Fragment key={grupo.key}>
+                          {/* CABEÇALHO DO BLOCO DA OPERAÇÃO / CT-e (Moldura com linha superior forte e união visual) */}
+                          <tr className={`bg-slate-800/95 border-t-2 border-slate-600 border-l-4 ${accentBorderColor}`}>
+                            <td colSpan={7} className="px-3 py-2 text-xs">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 border ${
+                                    activeSubTab === 'receber'
+                                      ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-blue-600/30 text-blue-300 border-blue-500/40'
+                                  }`}>
+                                    <Truck className="h-3 w-3" />
+                                    CT-e Nº {grupo.numero_cte || 'S/N'}
+                                  </span>
+                                  {grupo.is_triangular && (
+                                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold">
+                                      🔄 Triangular (+ Nº {grupo.numero_cte_2 || 'S/N'})
+                                    </span>
+                                  )}
+                                  <span className="font-bold text-white text-xs">
+                                    {grupo.motorista_nome}
+                                  </span>
+                                  {grupo.placa_veiculo && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      • Placa: <strong className="text-slate-200">{grupo.placa_veiculo}</strong>
+                                    </span>
+                                  )}
+                                  {grupo.cliente_nome && (
+                                    <span className="text-[10px] text-slate-400 truncate max-w-[200px]" title={grupo.cliente_nome}>
+                                      • Tomador: {grupo.cliente_nome}
+                                    </span>
+                                  )}
+                                  {isMultiplasParcelas && (
+                                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-700/60 text-slate-300 border border-slate-600 font-medium">
+                                      {grupo.titulos.length} parcelas vinculadas (CT-e + Por Fora / Complementos)
+                                    </span>
+                                  )}
                                 </div>
-                                <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-indigo-900/50">
-                                  <span className="font-bold text-purple-300 font-mono">2: Nº {t.numero_cte_2 || 'S/N'}</span>
-                                  <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_2)}</span>
-                                </div>
-                              </div>
-                              <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[8.5px] font-bold inline-block">
-                                🔄 Triangular (2 CT-es)
-                              </span>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>{t.descricao}</p>
-                              <span className="text-[10px] text-slate-400">
-                                {t.is_frete ? '🚚 Vinculado a Frete' : '🏢 Despesa / Título Avulso'}
-                              </span>
-                            </div>
-                          )}
-                        </td>
 
-                        {/* Categoria */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {getCategoriaBadge(t.categoria, t.categoria_nome)}
-                        </td>
-
-                        {/* Pessoa / Fornecedor / Tomador */}
-                        <td className="px-3 py-2.5">
-                          {t.tipo === 'receber' && t.is_triangular ? (
-                            <div className="space-y-0.5 text-[11px]">
-                              <p className="font-medium text-indigo-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
-                              <p className="font-medium text-purple-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="font-medium text-slate-200 truncate max-w-[160px] lg:max-w-[220px]" title={t.pessoa_nome}>{t.pessoa_nome || '-'}</p>
-                              {t.forma_pagamento && (
-                                <p className="text-[10px] text-slate-400 font-mono">{t.forma_pagamento}</p>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Vencimento */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <p className={`font-semibold font-mono ${isVencido ? 'text-rose-400' : 'text-slate-300'}`}>
-                            {t.data_vencimento ? new Date(t.data_vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                          </p>
-                          {isVencido && <span className="text-[9px] text-rose-400 font-bold block">Vencido</span>}
-                        </td>
-
-                        {/* Valor */}
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
-                          <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {formatMoney(valorTotal)}
-                          </span>
-                          {t.is_triangular && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
-                            <span className="text-[8.5px] text-slate-400 block font-normal">
-                              (CT-es: {formatMoney(t.valor_cte_1)} | {formatMoney(t.valor_cte_2)})
-                            </span>
-                          )}
-                          {valorPago > 0 && !isQuitado && (
-                            <span className="text-[10px] text-emerald-400 block font-medium">Pago: {formatMoney(valorPago)}</span>
-                          )}
-                          {isParcial && saldoPendente > 0 && (
-                            <span className="text-[10px] text-amber-400 block font-bold">Saldo: {formatMoney(saldoPendente)}</span>
-                          )}
-                        </td>
-
-                        {/* Status com Botão de Extrato de Baixas */}
-                        <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                          {isQuitado ? (
-                            <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
-                              <CheckCircle2 className="h-3 w-3" />
-                              <span>{t.tipo === 'receber' ? 'Recebido 100%' : 'Quitado 100%'}</span>
-                            </span>
-                          ) : isParcial ? (
-                            <span className="px-2.5 py-1 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
-                              <Clock className="h-3 w-3" />
-                              <span>Parcial ({formatMoney(valorPago)})</span>
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
-                              <Clock className="h-3 w-3" />
-                              <span>Pendente</span>
-                            </span>
-                          )}
-
-                          {/* Botão de Histórico de Baixas Parciais */}
-                          <button
-                            type="button"
-                            onClick={() => toggleExpandTitulo(t.id)}
-                            className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 mx-auto px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 transition cursor-pointer"
-                            title="Ver histórico detalhado de parcelas e pagamentos parciais"
-                          >
-                            {expandedTituloIds.has(t.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                            <span>{t.quantidade_baixas > 0 ? `${t.quantidade_baixas} Baixa(s)` : 'Ver Extrato'}</span>
-                          </button>
-                        </td>
-
-                        {/* Ações Rápidas: Baixar, Recibo, WhatsApp, Excluir */}
-                        <td className="px-3 py-2.5 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                            
-                            {/* Botão de Baixa / Pagamento */}
-                            {!isQuitado ? (
-                              <button
-                                onClick={() => handleOpenBaixa(t)}
-                                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                                  isParcial 
-                                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950' 
-                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
-                                }`}
-                                title="Registrar Pagamento / Baixar Título"
-                              >
-                                <CheckCheck className="h-3.5 w-3.5" />
-                                <span>{isParcial ? `Pagar Saldo (${formatMoney(saldoPendente)})` : (t.tipo === 'receber' ? 'Receber' : 'Quitar')}</span>
-                              </button>
-                            ) : (
-                              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
-                                <Check className="h-3.5 w-3.5" />
-                                <span>Quitado</span>
-                              </span>
-                            )}
-
-                            {/* Botão Recibo Oficial */}
-                            {t.frete_id && onOpenRecibo && (
-                              <button
-                                onClick={() => handleOpenReciboFromTitulo(t)}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[11px] font-bold"
-                                title="Imprimir Recibo Oficial (Visão Empresa ou Motorista)"
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                                <span>Recibo</span>
-                              </button>
-                            )}
-
-                            {/* Botão WhatsApp Cobrança / PIX */}
-                            <button
-                              onClick={() => {
-                                setWhatsAppModalFinanceiro(t);
-                                setCopiedWhatsApp(false);
-                                setWhatsappTelefone('');
-                              }}
-                              className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition cursor-pointer shrink-0"
-                              title={t.tipo === 'receber' ? 'Enviar cobrança com chave PIX no WhatsApp' : 'Enviar comprovante / acerto no WhatsApp'}
-                            >
-                              <MessageCircle className="h-3.5 w-3.5" />
-                            </button>
-
-                            {/* Botão Excluir */}
-                            <button
-                              onClick={() => setTituloParaExcluir(t)}
-                              className="p-1 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 transition cursor-pointer shrink-0"
-                              title="Excluir Lançamento"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-
-                      </tr>
-
-                      {/* SUB-LINHA EXPANSÍVEL: HISTÓRICO COMPLETO DE BAIXAS PARCIAIS */}
-                      {expandedTituloIds.has(t.id) && (
-                        <tr key={`extrato_${t.id}`} className="bg-slate-950/90 border-b border-slate-800">
-                          <td colSpan={7} className="px-4 py-4 sm:px-6">
-                            <div className="rounded-2xl bg-slate-900/90 border border-slate-700/80 p-4 space-y-3.5 shadow-2xl">
-                              {/* Header do Accordion */}
-                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-blue-400" />
-                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                                      Histórico de Baixas & Pagamentos
-                                    </h4>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30 font-mono font-bold">
-                                      {t.historico_baixas?.length || 0} lançamento(s)
+                                <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-1.5 text-[11px]">
+                                    <span className="text-slate-400 text-[10px] uppercase font-semibold">Total Operação:</span>
+                                    <span className="font-mono font-black text-emerald-400 text-xs">
+                                      {formatMoney(totalValorGrupo)}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] text-slate-400">
-                                    Título: <strong className="text-slate-200">{t.descricao}</strong> | Favorecido: <strong className="text-slate-200">{t.pessoa_nome || '-'}</strong>
-                                  </p>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  {!isQuitado && (
-                                    <button
-                                      onClick={() => handleOpenBaixa(t)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950 transition cursor-pointer"
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />
-                                      <span>Lançar Nova Baixa ({formatMoney(saldoPendente)})</span>
-                                    </button>
+                                  {totalPagoGrupo > 0 && !isGrupoQuitado && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      (Pago: {formatMoney(totalPagoGrupo)})
+                                    </span>
                                   )}
-                                  {t.frete_id && onOpenRecibo && (
+                                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${
+                                    isGrupoQuitado 
+                                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' 
+                                      : isGrupoParcial
+                                        ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
+                                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                                  }`}>
+                                    {isGrupoQuitado ? '✓ Operação 100% Paga' : `Saldo: ${formatMoney(saldoPendenteGrupo)}`}
+                                  </span>
+
+                                  {onOpenRecibo && (
                                     <button
-                                      onClick={() => handleOpenReciboFromTitulo(t)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs transition cursor-pointer"
+                                      onClick={() => handleOpenReciboFromTitulo(grupo.titulos[0])}
+                                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[10px] font-bold"
+                                      title="Imprimir Recibo Oficial da Operação Completa"
                                     >
-                                      <Printer className="h-3.5 w-3.5" />
-                                      <span>Imprimir Recibo</span>
+                                      <Printer className="h-3 w-3" />
+                                      <span>Recibo da Operação</span>
                                     </button>
                                   )}
                                 </div>
                               </div>
+                            </td>
+                          </tr>
 
-                              {/* Barra de Progresso Visual de Quitação */}
-                              <div className="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                                <div className="flex justify-between items-center text-[11px] font-mono">
-                                  <span className="text-slate-400">
-                                    Total do Título: <strong className="text-white">{formatMoney(valorTotal)}</strong>
-                                  </span>
-                                  <span className="text-emerald-400">
-                                    Total Pago: <strong className="font-bold">{formatMoney(valorPago)}</strong> ({t.percentual_pago || 0}%)
-                                  </span>
-                                  <span className={saldoPendente > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
-                                    {saldoPendente > 0 ? `Saldo Pendente: ${formatMoney(saldoPendente)}` : '✅ 100% Liquidado'}
-                                  </span>
-                                </div>
-                                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700">
-                                  <div
-                                    className={`h-full transition-all duration-500 ${
-                                      (t.percentual_pago || 0) >= 100 
-                                        ? 'bg-emerald-500' 
-                                        : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500'
-                                    }`}
-                                    style={{ width: `${Math.min(100, Math.max(0, t.percentual_pago || 0))}%` }}
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Tabela de Baixas */}
-                              {t.historico_baixas && t.historico_baixas.length > 0 ? (
-                                <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
-                                  <table className="w-full text-left text-[11px]">
-                                    <thead className="bg-slate-800/60 uppercase text-[9.5px] font-bold text-slate-400 border-b border-slate-800">
-                                      <tr>
-                                        <th className="py-2 px-3">Data</th>
-                                        <th className="py-2 px-3">Tipo / Parcela</th>
-                                        <th className="py-2 px-3">Forma</th>
-                                        <th className="py-2 px-3">Comprovante / Autenticação</th>
-                                        <th className="py-2 px-3">Observações</th>
-                                        <th className="py-2 px-3 text-right">Valor Pago</th>
-                                        <th className="py-2 px-3 text-center">Ações</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-850 font-mono">
-                                      {t.historico_baixas.map((bx, idx) => (
-                                        <tr key={bx.id || idx} className="hover:bg-slate-800/30 transition">
-                                          <td className="py-2 px-3 text-slate-200">
-                                            {bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                                          </td>
-                                          <td className="py-2 px-3">
-                                            <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-blue-300 border border-slate-700 font-sans font-semibold">
-                                              {bx.tipo_parcela === 'por_fora' ? '💼 Frete Por Fora' : bx.tipo_parcela === 'fiscal' ? '📄 Parcela CT-e' : bx.tipo_parcela === 'repasse' ? '🔄 Repasse' : bx.tipo_parcela === 'comissao' ? '📈 Comissão' : '💵 Baixa Parcial'}
-                                            </span>
-                                          </td>
-                                          <td className="py-2 px-3 text-slate-300 font-sans">
-                                            {bx.forma_pagamento || 'PIX'}
-                                          </td>
-                                          <td className="py-2 px-3 text-slate-400 font-sans">
-                                            {bx.comprovante_ref ? (
-                                              <span className="text-slate-300 font-mono text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
-                                                {bx.comprovante_ref}
-                                              </span>
-                                            ) : (
-                                              <span className="text-slate-500 italic text-[10px]">-</span>
-                                            )}
-                                          </td>
-                                          <td className="py-2 px-3 text-slate-400 font-sans max-w-[150px] truncate" title={bx.observacoes}>
-                                            {bx.observacoes || '-'}
-                                          </td>
-                                          <td className="py-2 px-3 text-right font-bold text-emerald-400 text-xs">
-                                            {formatMoney(bx.valor)}
-                                          </td>
-                                          <td className="py-2 px-3 text-center">
-                                            {typeof bx.id === 'number' && (
-                                              <button
-                                                onClick={() => handleEstornarBaixa(bx.id)}
-                                                className="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
-                                                title="Estornar este pagamento e estornar saldo"
-                                              >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                              </button>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              ) : (
-                                <div className="text-center py-4 text-slate-500 text-xs italic bg-slate-950/30 rounded-xl border border-dashed border-slate-800">
-                                  Nenhuma baixa parcial registrada até o momento para este lançamento.
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
+                          {/* LINHAS DOS TÍTULOS VINCULADOS AO FRETE */}
+                          {grupo.titulos.map((t, idx) => 
+                            renderTituloRow(t, true, idx === grupo.titulos.length - 1, isMultiplasParcelas)
+                          )}
+                        </React.Fragment>
+                      );
+                    } else {
+                      // Título Avulso (Operacional/Fixo)
+                      return (
+                        <React.Fragment key={grupo.key}>
+                          {renderTituloRow(grupo.titulos[0], false, true, false)}
+                        </React.Fragment>
+                      );
+                    }
+                  })
                 ) : (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
