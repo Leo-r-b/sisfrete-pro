@@ -594,17 +594,20 @@ const getRelatorioRepassesComissoes = (req, res) => {
 
       const freteReal = Number(f.valor_frete_real > 0 ? f.valor_frete_real : (f.valor_frete_compra || 0));
       let valorRepasseBruto = 0;
-      if (f.valor_repasse !== undefined && f.valor_repasse !== null && f.valor_repasse !== '') {
+      if (Number(f.valor_repasse || 0) > 0) {
         valorRepasseBruto = Number(f.valor_repasse);
-      } else if (isGestao || f.tipo_operacao === 'agenciamento_repasse') {
+      } else if (isGestao) {
+        valorRepasseBruto = freteReal;
+      } else if (f.tipo_operacao === 'agenciamento_repasse') {
         valorRepasseBruto = Math.max(0, Number((totalCtes - freteReal - valorComissao).toFixed(2)));
       } else {
-        valorRepasseBruto = 0;
+        valorRepasseBruto = freteReal;
       }
 
       const adiantamentoPago = Number((f.total_adiantamento_pago || 0).toFixed(2));
       const saldoRepasse = Math.max(0, Number((valorRepasseBruto - adiantamentoPago).toFixed(2)));
-      const statusFinal = f.status_repasse === 'pago' || saldoRepasse <= 0.01 ? 'pago' : (adiantamentoPago > 0 ? 'adiantado' : 'pendente');
+      const isQuitadoRepasse = f.status_repasse === 'pago' || (valorRepasseBruto > 0 && saldoRepasse <= 0.01);
+      const statusFinal = isQuitadoRepasse ? 'pago' : (adiantamentoPago > 0 ? 'adiantado' : 'pendente');
 
       return {
         ...f,
@@ -872,16 +875,21 @@ const getRelatorioManutencaoFrota = (req, res) => {
 // 9. Relatório Financeiro Consolidado & Fluxo de Caixa Real
 const getRelatorioFinanceiroFluxo = (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId || req.user?.empresa_id || 1;
+    const empIdNum = Number(empresaId);
+    const empIdStr = String(empresaId);
     const { search, data_inicio, data_fim, metodologia = 'todos' } = req.query;
+
+    const empresaObj = db.prepare('SELECT modo_operacao FROM empresas WHERE id = ? OR id = ?').get(empIdNum, empIdStr);
+    const isGestaoEmpresa = empresaObj?.modo_operacao === 'gestao_pagamentos';
 
     let queryFretes = `
       SELECT f.*,
         (SELECT COALESCE(SUM(valor), 0) FROM adiantamentos_historico WHERE frete_id = f.id) as total_ja_pago
       FROM fretes f
-      WHERE f.status_frete != 'cancelado' AND f.empresa_id = ?
+      WHERE f.status_frete != 'cancelado' AND (f.empresa_id = ? OR f.empresa_id = ?)
     `;
-    const paramsFretes = [empresaId];
+    const paramsFretes = [empIdNum, empIdStr];
 
     if (data_inicio) {
       queryFretes += ` AND f.data_emissao >= ?`;
@@ -899,12 +907,12 @@ const getRelatorioFinanceiroFluxo = (req, res) => {
 
     const fretes = db.prepare(queryFretes).all(...paramsFretes);
 
-    let queryTitulos = `SELECT * FROM financeiro_titulos WHERE empresa_id = ?`;
-    const paramsTitulos = [empresaId];
+    let queryTitulos = `SELECT * FROM financeiro_titulos WHERE (empresa_id = ? OR empresa_id = ?) AND status != 'cancelado'`;
+    const paramsTitulos = [empIdNum, empIdStr];
     const titulos = db.prepare(queryTitulos).all(...paramsTitulos);
 
-    let queryManut = `SELECT * FROM veiculos_manutencoes WHERE empresa_id = ? AND status = 'realizada'`;
-    const paramsManut = [empresaId];
+    let queryManut = `SELECT * FROM veiculos_manutencoes WHERE (empresa_id = ? OR empresa_id = ?) AND status = 'realizada'`;
+    const paramsManut = [empIdNum, empIdStr];
     const manutencoes = db.prepare(queryManut).all(...paramsManut);
 
     const titulosConsolidados = [];
@@ -925,8 +933,11 @@ const getRelatorioFinanceiroFluxo = (req, res) => {
       const vVendaTotal = v1 + v2;
       const dataEmissao = f.data_emissao || (f.created_at ? f.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
 
-      faturamentoBrutoFretes += vVendaTotal;
-      const isGestao = f.tipo_operacao === 'gestao_pagamentos';
+      const isGestao = f.tipo_operacao === 'gestao_pagamentos' || isGestaoEmpresa;
+      if (!isGestao) {
+        faturamentoBrutoFretes += vVendaTotal;
+      }
+
       let vComissao = 0;
       if (isGestao) {
         vComissao = Number(f.valor_comissao !== undefined && f.valor_comissao !== null && f.valor_comissao !== '' ? f.valor_comissao : 0);
@@ -937,40 +948,43 @@ const getRelatorioFinanceiroFluxo = (req, res) => {
       }
       comissaoAgenciamentoTotal += vComissao;
 
-      if (v1 > 0) {
-        const isRec1 = f.status_recebimento_cliente === 'recebido';
-        if (isRec1) freteRecebidoTotal += v1;
-        else freteAReceberTotal += v1;
+      // Em Gestão de Pagamentos, a empresa é TOMADORA/PAGADORA (não gera contas a receber de CT-e de terceiros)
+      if (!isGestao) {
+        if (v1 > 0) {
+          const isRec1 = f.status_recebimento_cliente === 'recebido';
+          if (isRec1) freteRecebidoTotal += v1;
+          else freteAReceberTotal += v1;
 
-        titulosConsolidados.push({
-          id: `frete_rec_${f.id}`,
-          tipo: 'receber',
-          categoria: 'faturamento_frete',
-          descricao: isTriangular ? `CT-e 1 Nº ${f.numero_cte || 'S/N'}` : `CT-e Nº ${f.numero_cte || 'S/N'}`,
-          pessoa_nome: f.cliente_nome,
-          valor: v1,
-          valor_pago: isRec1 ? v1 : 0,
-          data_vencimento: dataEmissao,
-          status: isRec1 ? 'recebido' : 'pendente'
-        });
-      }
+          titulosConsolidados.push({
+            id: `frete_rec_${f.id}`,
+            tipo: 'receber',
+            categoria: 'faturamento_frete',
+            descricao: isTriangular ? `CT-e 1 Nº ${f.numero_cte || 'S/N'}` : `CT-e Nº ${f.numero_cte || 'S/N'}`,
+            pessoa_nome: f.cliente_nome,
+            valor: v1,
+            valor_pago: isRec1 ? v1 : 0,
+            data_vencimento: dataEmissao,
+            status: isRec1 ? 'recebido' : 'pendente'
+          });
+        }
 
-      if (isTriangular && v2 > 0) {
-        const isRec2 = f.status_recebimento_cliente_2 === 'recebido';
-        if (isRec2) freteRecebidoTotal += v2;
-        else freteAReceberTotal += v2;
+        if (isTriangular && v2 > 0) {
+          const isRec2 = f.status_recebimento_cliente_2 === 'recebido';
+          if (isRec2) freteRecebidoTotal += v2;
+          else freteAReceberTotal += v2;
 
-        titulosConsolidados.push({
-          id: `frete_rec2_${f.id}`,
-          tipo: 'receber',
-          categoria: 'faturamento_frete',
-          descricao: `CT-e 2 Nº ${f.numero_cte_2 || 'S/N'}`,
-          pessoa_nome: f.cliente_nome_2 || f.cliente_nome,
-          valor: v2,
-          valor_pago: isRec2 ? v2 : 0,
-          data_vencimento: dataEmissao,
-          status: isRec2 ? 'recebido' : 'pendente'
-        });
+          titulosConsolidados.push({
+            id: `frete_rec2_${f.id}`,
+            tipo: 'receber',
+            categoria: 'faturamento_frete',
+            descricao: `CT-e 2 Nº ${f.numero_cte_2 || 'S/N'}`,
+            pessoa_nome: f.cliente_nome_2 || f.cliente_nome,
+            valor: v2,
+            valor_pago: isRec2 ? v2 : 0,
+            data_vencimento: dataEmissao,
+            status: isRec2 ? 'recebido' : 'pendente'
+          });
+        }
       }
 
       const freteiroTotal = Number(f.valor_frete_real > 0 ? f.valor_frete_real : (f.valor_frete_compra || 0));
@@ -1058,14 +1072,14 @@ const getRelatorioFinanceiroFluxo = (req, res) => {
     for (const m of manutencoes) totalGastoManutencao += Number(m.valor || 0);
 
     const isModoAgenciamento = metodologia === 'agenciamento';
-    const receitaBase = isModoAgenciamento ? comissaoAgenciamentoTotal : faturamentoBrutoFretes;
+    const receitaBase = isGestaoEmpresa ? 0 : (isModoAgenciamento ? comissaoAgenciamentoTotal : faturamentoBrutoFretes);
     const despesasTitulosTotal = Object.values(categoriasMap).reduce((acc, c) => acc + c.total, 0);
     const despesasTitulosPagas = Object.values(categoriasMap).reduce((acc, c) => acc + c.pago, 0);
     const despesasTitulosPendentes = Math.max(0, despesasTitulosTotal - despesasTitulosPagas);
 
     const custosDiretos = isModoAgenciamento ? 0 : repasseFreteirosDevido;
     const despesaConsolidada = custosDiretos + despesasTitulosTotal + totalGastoManutencao;
-    const lucroLiquidoReal = receitaBase - despesaConsolidada;
+    const lucroLiquidoReal = isGestaoEmpresa ? 0 : (receitaBase - despesaConsolidada);
     const margemLiquidaPct = receitaBase > 0 ? Number(((lucroLiquidoReal / receitaBase) * 100).toFixed(2)) : 0;
     
     return res.json({
@@ -1222,6 +1236,165 @@ const getRelatorioContasPagas = (req, res) => {
   }
 };
 
+/**
+ * 11. Relatório Resumo Simplificado de CT-e em Aberto (Por Fornecedor / Transportador)
+ * Formato limpo e objetivo para acerto e envio WhatsApp:
+ * "CT-e 3898 - Valor CT-e: R$ 1.000,00 | Por fora: R$ 2.320,00 | Valor total: R$ 3.320,00"
+ */
+const getRelatorioResumoSimplificado = (req, res) => {
+  try {
+    const empresaId = req.empresaId || req.user?.empresa_id || 1;
+    const empIdNum = Number(empresaId);
+    const empIdStr = String(empresaId);
+    const { search, fornecedor, status_pagamento = 'aberto', data_inicio, data_fim } = req.query;
+
+    let query = `
+      SELECT 
+        f.*,
+        (SELECT COALESCE(SUM(valor), 0) FROM adiantamentos_historico WHERE frete_id = f.id) as total_adiantamento_pago,
+        (SELECT COALESCE(SUM(valor), 0) FROM financeiro_baixas_historico WHERE frete_id = f.id AND tipo_titulo = 'pagar') as total_baixas_pagas,
+        m.telefone as motorista_telefone,
+        m.pix_chave as motorista_pix
+      FROM fretes f
+      LEFT JOIN motoristas m ON f.motorista_id = m.id
+      WHERE (f.empresa_id = ? OR f.empresa_id = ?) AND f.status_frete != 'cancelado'
+    `;
+    const params = [empIdNum, empIdStr];
+
+    if (data_inicio) {
+      query += ` AND f.data_emissao >= ?`;
+      params.push(data_inicio);
+    }
+    if (data_fim) {
+      query += ` AND f.data_emissao <= ?`;
+      params.push(data_fim);
+    }
+
+    query += ` ORDER BY f.data_emissao DESC, f.id DESC`;
+
+    const fretesRaw = db.prepare(query).all(...params);
+
+    const helperFormatMoney = (val) => {
+      return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    const itens = [];
+    const fornecedoresSet = new Set();
+
+    for (const f of fretesRaw) {
+      // 1. Identificação Inteligente do Fornecedor / Transportador
+      // Se motorista contiver " - ", o fornecedor é a parte após o último " - " (ex: "RENATO SCHENA DE OLIVEIRA - BOBY" -> "BOBY")
+      let nomeFornecedor = '';
+      if (f.favorecido_freteiro_nome && f.favorecido_freteiro_nome.trim() !== '') {
+        nomeFornecedor = f.favorecido_freteiro_nome.trim();
+      } else if (f.motorista_nome && f.motorista_nome.includes(' - ')) {
+        const partes = f.motorista_nome.split(' - ');
+        nomeFornecedor = partes[partes.length - 1].trim();
+      } else if (f.motorista_nome) {
+        nomeFornecedor = f.motorista_nome.trim();
+      } else {
+        nomeFornecedor = 'Outros Fornecedores';
+      }
+
+      fornecedoresSet.add(nomeFornecedor);
+
+      const isTriangular = Boolean(f.numero_cte_2 || Number(f.valor_frete_venda_2 || 0) > 0 || f.tipo_operacao === 'triangular');
+      const v1 = Number(f.valor_frete_venda || 0);
+      const v2 = isTriangular ? Number(f.valor_frete_venda_2 || 0) : 0;
+      const vCteTotal = Number((v1 + v2).toFixed(2));
+
+      const vTotalContratado = Number((f.valor_frete_real > 0 ? f.valor_frete_real : (f.valor_frete_compra || 0)).toFixed(2));
+      const vTotalCarga = vTotalContratado > 0 ? vTotalContratado : vCteTotal;
+      const vPorFora = Math.max(0, Number((vTotalCarga - vCteTotal).toFixed(2)));
+
+      const vPago = Math.max(Number(f.total_adiantamento_pago || 0), Number(f.total_baixas_pagas || 0));
+      const saldoPendente = Math.max(0, Number((vTotalCarga - vPago).toFixed(2)));
+
+      const isQuitado = f.status_pagamento_motorista === 'quitado' || (saldoPendente <= 0.01 && vTotalCarga > 0);
+      const isParcial = !isQuitado && vPago > 0;
+      const statusFinal = isQuitado ? 'quitado' : (isParcial ? 'parcial' : 'aberto');
+
+      const numCteStr = isTriangular && f.numero_cte_2 
+        ? `${f.numero_cte || 'S/N'} + ${f.numero_cte_2}` 
+        : (f.numero_cte || 'S/N');
+
+      const textoFormatado = `CT-e ${numCteStr} - Valor CT-e: ${helperFormatMoney(vCteTotal)} | Por fora: ${helperFormatMoney(vPorFora)} | Valor total: ${helperFormatMoney(vTotalCarga)}`;
+
+      itens.push({
+        id: f.id,
+        numero_cte: f.numero_cte,
+        numero_cte_2: f.numero_cte_2,
+        is_triangular: isTriangular,
+        data_emissao: f.data_emissao,
+        fornecedor: nomeFornecedor,
+        motorista_nome: f.motorista_nome,
+        placa_veiculo: f.placa_veiculo,
+        cliente_nome: f.cliente_nome,
+        valor_cte: vCteTotal,
+        valor_por_fora: vPorFora,
+        valor_total: vTotalCarga,
+        valor_pago: vPago,
+        saldo_pendente: saldoPendente,
+        status: statusFinal,
+        texto_formatado: textoFormatado
+      });
+    }
+
+    // Filtros em memória
+    let filtrados = itens;
+
+    if (fornecedor && fornecedor.trim() !== '' && fornecedor !== 'todos') {
+      const termFornec = fornecedor.trim().toLowerCase();
+      filtrados = filtrados.filter(i => i.fornecedor.toLowerCase() === termFornec || i.fornecedor.toLowerCase().includes(termFornec));
+    }
+
+    if (status_pagamento === 'aberto') {
+      filtrados = filtrados.filter(i => i.status !== 'quitado');
+    } else if (status_pagamento === 'quitado') {
+      filtrados = filtrados.filter(i => i.status === 'quitado');
+    }
+
+    if (search && search.trim() !== '') {
+      const q = search.trim().toLowerCase();
+      filtrados = filtrados.filter(i => 
+        (i.numero_cte && i.numero_cte.toLowerCase().includes(q)) ||
+        (i.fornecedor && i.fornecedor.toLowerCase().includes(q)) ||
+        (i.motorista_nome && i.motorista_nome.toLowerCase().includes(q)) ||
+        (i.placa_veiculo && i.placa_veiculo.toLowerCase().includes(q))
+      );
+    }
+
+    // Totais Consolidados
+    const totalValorCte = Number(filtrados.reduce((acc, i) => acc + i.valor_cte, 0).toFixed(2));
+    const totalPorFora = Number(filtrados.reduce((acc, i) => acc + i.valor_por_fora, 0).toFixed(2));
+    const totalGeral = Number(filtrados.reduce((acc, i) => acc + i.valor_total, 0).toFixed(2));
+    const totalPago = Number(filtrados.reduce((acc, i) => acc + i.valor_pago, 0).toFixed(2));
+    const totalSaldoPendente = Number(filtrados.reduce((acc, i) => acc + i.saldo_pendente, 0).toFixed(2));
+
+    // Montagem do texto WhatsApp consolidado
+    const linhasWhatsApp = filtrados.map(i => i.texto_formatado).join('\n');
+    const nomeFornecHeader = fornecedor && fornecedor !== 'todos' ? ` - Fornecedor: ${fornecedor}` : '';
+    const textoWhatsAppCompleto = `*Resumos CT-e em aberto${nomeFornecHeader}*\n\n${linhasWhatsApp}\n\n---------------------------------------------\nTotal CT-e: ${helperFormatMoney(totalValorCte)} | Por fora: ${helperFormatMoney(totalPorFora)}\n*Valor total: ${helperFormatMoney(totalGeral)}*`;
+
+    return res.json({
+      fornecedores: Array.from(fornecedoresSet).sort(),
+      totais: {
+        total_ctes: filtrados.length,
+        total_valor_cte: totalValorCte,
+        total_por_fora: totalPorFora,
+        total_geral: totalGeral,
+        total_pago: totalPago,
+        total_saldo_pendente: totalSaldoPendente,
+      },
+      texto_whatsapp: textoWhatsAppCompleto,
+      itens: filtrados
+    });
+  } catch (error) {
+    console.error('Erro getRelatorioResumoSimplificado:', error);
+    return res.status(500).json({ error: 'Erro ao gerar resumo simplificado de CT-e: ' + error.message });
+  }
+};
+
 module.exports = {
   getRelatorioMotoristas,
   getExtratoMotorista,
@@ -1233,5 +1406,6 @@ module.exports = {
   getRelatorioManutencaoFrota,
   getRelatorioFinanceiroFluxo,
   getRelatorioContasPagas,
+  getRelatorioResumoSimplificado,
 };
 

@@ -49,7 +49,7 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   const isSubcontratacao = !isAgenciamento;
 
   // Aba inicial estrita conforme a licença ativa
-  const [activeTab, setActiveTab] = useState(isAgenciamento ? 'repasses' : 'dre'); 
+  const [activeTab, setActiveTab] = useState(isLicencaGestao ? 'resumo_simplificado' : (isAgenciamento ? 'repasses' : 'dre')); 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [dataInicio, setDataInicio] = useState('');
@@ -57,10 +57,13 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   const [statusFiltro, setStatusFiltro] = useState('');
   const [filtroPlaca, setFiltroPlaca] = useState('');
   const [filtroTipoManut, setFiltroTipoManut] = useState('');
+  const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
 
   // Ajustar aba ativa automaticamente quando a licença for trocada
   useEffect(() => {
-    if (isSubcontratacao && activeTab === 'repasses') {
+    if (isLicencaGestao) {
+      setActiveTab('resumo_simplificado');
+    } else if (isSubcontratacao && (activeTab === 'repasses' || activeTab === 'resumo_simplificado')) {
       setActiveTab('dre');
     } else if (isAgenciamento && activeTab === 'dre') {
       setActiveTab('repasses');
@@ -68,6 +71,10 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   }, [activeEmpresa?.id, activeEmpresa?.modo_operacao]);
 
   // Estados dos Relatórios
+  const [relResumoSimplificado, setRelResumoSimplificado] = useState({ totais: {}, itens: [], fornecedores: [], texto_whatsapp: '' });
+  const [copiedWhatsAppResumo, setCopiedWhatsAppResumo] = useState(false);
+  const [copiedLinhaId, setCopiedLinhaId] = useState(null);
+
   const [relRepasses, setRelRepasses] = useState({ totais: {}, fretes: [] });
   const [relDre, setRelDre] = useState({ totais: {}, viagens: [] });
   const [relFinanceiroFluxo, setRelFinanceiroFluxo] = useState({ totais: {}, categorias_despesas: [], fretes: [], titulos: [], manutencoes: [] });
@@ -76,6 +83,8 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   const [relClientes, setRelClientes] = useState({ totais: {}, clientes: [] });
   const [relCanhotos, setRelCanhotos] = useState({ totais: {}, fretes: [] });
   const [relContasPagas, setRelContasPagas] = useState({ totais: {}, baixas: [] });
+
+  const possuiFrota = Boolean(activeEmpresa?.possui_frota_propria || (activeEmpresa?.modulos && activeEmpresa.modulos.includes('frotas')));
 
   // Extrato Individual do Motorista
   const [selectedMotoristaExtrato, setSelectedMotoristaExtrato] = useState(null);
@@ -132,7 +141,14 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
       if (filtroPlaca) params.placa = filtroPlaca;
       if (filtroTipoManut) params.tipo = filtroTipoManut;
 
-      if (activeTab === 'repasses') {
+      if (activeTab === 'resumo_simplificado') {
+        const paramsResumo = { ...params };
+        if (fornecedorFiltro && fornecedorFiltro !== 'todos') {
+          paramsResumo.fornecedor = fornecedorFiltro;
+        }
+        const res = await api.get('/relatorios/resumo-simplificado', { params: paramsResumo });
+        setRelResumoSimplificado(res.data || { totais: {}, itens: [], fornecedores: [], texto_whatsapp: '' });
+      } else if (activeTab === 'repasses') {
         const res = await api.get('/relatorios/repasses-comissoes', { params });
         setRelRepasses(res.data || { totais: {}, fretes: [] });
       } else if (activeTab === 'dre') {
@@ -166,7 +182,7 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
 
   useEffect(() => {
     loadData();
-  }, [activeTab, search, dataInicio, dataFim, statusFiltro, filtroPlaca, filtroTipoManut, metodologiaAtiva]);
+  }, [activeTab, search, dataInicio, dataFim, statusFiltro, filtroPlaca, filtroTipoManut, metodologiaAtiva, fornecedorFiltro]);
 
   // Carregar Extrato Analítico do Motorista
   const handleOpenExtratoMotorista = async (nome) => {
@@ -188,7 +204,20 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
     let rows = [];
     let filename = `extrato_${activeTab}_${new Date().toISOString().substring(0, 10)}.csv`;
 
-    if (activeTab === 'repasses') {
+    if (activeTab === 'resumo_simplificado') {
+      headers = ['CT-e', 'Data Emissao', 'Fornecedor / Transportador', 'Motorista', 'Placa Veiculo', 'Valor CT-e Fiscal (R$)', 'Frete Por Fora (R$)', 'Valor Total da Carga (R$)', 'Status'];
+      rows = (relResumoSimplificado.itens || []).map(i => [
+        `"CT-e ${i.numero_cte || 'S/N'}"`,
+        `"${i.data_emissao || ''}"`,
+        `"${i.fornecedor || ''}"`,
+        `"${i.motorista_nome || ''}"`,
+        `"${i.placa_veiculo || ''}"`,
+        (i.valor_cte || 0).toFixed(2).replace('.', ','),
+        (i.valor_por_fora || 0).toFixed(2).replace('.', ','),
+        (i.valor_total || 0).toFixed(2).replace('.', ','),
+        `"${i.status || ''}"`
+      ]);
+    } else if (activeTab === 'repasses') {
       headers = ['CT-e', 'Data Emissao', 'Motorista', 'Placa Veiculo', 'Tomador / Cliente', 'Frete Bruto (R$)', 'Comissao (%)', 'Comissao (R$)', 'Repasse Devido (R$)', 'Adiantamento Pago (R$)', 'Saldo a Pagar (R$)', 'Chave PIX', 'Status Repasse'];
       rows = (relRepasses.fretes || []).map(f => [
         `"CT-e ${f.numero_cte || 'S/N'}"`,
@@ -362,8 +391,25 @@ ${viagensTxt}
     setTimeout(() => setCopiedMsg(false), 3000);
   };
 
+  // Copiar Resumo Completo de CT-e para WhatsApp do Fornecedor
+  const handleCopyWhatsAppResumo = () => {
+    if (!relResumoSimplificado.texto_whatsapp) return;
+    navigator.clipboard.writeText(relResumoSimplificado.texto_whatsapp);
+    setCopiedWhatsAppResumo(true);
+    setTimeout(() => setCopiedWhatsAppResumo(false), 3000);
+  };
+
+  // Copiar Linha Individual de CT-e no formato do WhatsApp
+  const handleCopyLinhaWhatsApp = (item) => {
+    if (!item?.texto_formatado) return;
+    navigator.clipboard.writeText(item.texto_formatado);
+    setCopiedLinhaId(item.id);
+    setTimeout(() => setCopiedLinhaId(null), 2500);
+  };
+
   const getNomeAbaFormatado = () => {
     switch (activeTab) {
+      case 'resumo_simplificado': return 'RESUMO SIMPLIFICADO DE CT-E (POR FORNECEDOR / TRANSPORTADOR)';
       case 'repasses': return 'EXTRATO DE REPASSES & COMISSÕES DE AGENCIAMENTO';
       case 'dre': return 'DEMONSTRATIVO DE RESULTADO OPERACIONAL POR VIAGEM (DRE)';
       case 'contas_pagas': return 'RELATÓRIO ANALÍTICO DE CONTAS PAGAS & BAIXAS PARCIAIS';
@@ -459,6 +505,20 @@ ${viagensTxt}
       {/* ABAS DE NAVEGAÇÃO ENTRE RELATÓRIOS (ENQUADRADAS NA METODOLOGIA DA LICENÇA) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800 print:hidden text-xs">
         
+        {/* ABA: RESUMO SIMPLIFICADO DE CT-E (POR FORNECEDOR / TRANSPORTADOR) */}
+        <button
+          onClick={() => setActiveTab('resumo_simplificado')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+            activeTab === 'resumo_simplificado'
+              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+          title="Resumo Simplificado: CT-e Fiscal, Frete Por Fora e Total por Transportador / Fornecedor"
+        >
+          <Layers className="h-4 w-4 text-amber-300" />
+          <span>Resumo CT-e (Fornecedores)</span>
+        </button>
+
         {/* ABA EXCLUSIVA DE AGENCIAMENTO: Repasses & Comissões */}
         {isAgenciamento && (
           <button
@@ -505,18 +565,20 @@ ${viagensTxt}
           <span>Fluxo Financeiro & Caixa</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('manutencao_frota')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
-            activeTab === 'manutencao_frota'
-              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-          title="Gestão de Frota: Custos de oficinas, peças, pneus, preventivas e corretivas"
-        >
-          <Wrench className="h-4 w-4 text-amber-400" />
-          <span>Manutenção & Frota</span>
-        </button>
+        {possuiFrota && (
+          <button
+            onClick={() => setActiveTab('manutencao_frota')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'manutencao_frota'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+            title="Gestão de Frota: Custos de oficinas, peças, pneus, preventivas e corretivas"
+          >
+            <Wrench className="h-4 w-4 text-amber-400" />
+            <span>Manutenção & Frota</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('motoristas')}
@@ -649,6 +711,279 @@ ${viagensTxt}
           )}
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 0. RELATÓRIO RESUMO SIMPLIFICADO DE CT-E (POR FORNECEDOR / TRANSPORTADOR) */}
+      {/* ========================================================================= */}
+      {activeTab === 'resumo_simplificado' && (
+        <div className="space-y-4 print:space-y-1">
+          
+          {/* BARRA DE CONTROLE E AÇÕES DO RESUMO SIMPLIFICADO */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900 border border-slate-800 print:hidden">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 text-xs font-semibold">Fornecedor / Transportador:</span>
+                <select
+                  value={fornecedorFiltro}
+                  onChange={(e) => setFornecedorFiltro(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-slate-100 font-bold text-xs focus:border-amber-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="todos">Todos os Fornecedores ({relResumoSimplificado.fornecedores?.length || 0})</option>
+                  {(relResumoSimplificado.fornecedores || []).map((fornec) => (
+                    <option key={fornec} value={fornec}>{fornec}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 text-xs font-semibold">Status:</span>
+                <select
+                  value={statusFiltro || 'aberto'}
+                  onChange={(e) => setStatusFiltro(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-slate-100 font-bold text-xs focus:border-amber-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="aberto">Em Aberto (Pendentes)</option>
+                  <option value="todos">Todos os Status</option>
+                  <option value="quitado">Apenas Quitados</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleCopyWhatsAppResumo}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs transition shadow-lg cursor-pointer ${
+                  copiedWhatsAppResumo 
+                    ? 'bg-emerald-500 text-white shadow-emerald-900' 
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950'
+                }`}
+                title="Copiar texto formatado pronto para envio no WhatsApp"
+              >
+                {copiedWhatsAppResumo ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+                <span>{copiedWhatsAppResumo ? 'Copiado para WhatsApp! ✓' : 'Copiar Texto para WhatsApp'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleImprimirPdf}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition cursor-pointer"
+                title="Imprimir extrato limpo do fornecedor"
+              >
+                <Printer className="h-4 w-4 text-blue-400" />
+                <span>Imprimir Resumo</span>
+              </button>
+            </div>
+          </div>
+
+          {/* CARDS RESUMO SIMPLIFICADO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 print:hidden">
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800">
+              <span className="text-slate-400 text-[10px] uppercase font-bold block">Qtd. CT-es</span>
+              <strong className="text-base font-mono font-black text-white">
+                {relResumoSimplificado.totais?.total_ctes || 0}
+              </strong>
+              <span className="text-[10px] text-slate-500 block">
+                {fornecedorFiltro !== 'todos' ? `Transportador: ${fornecedorFiltro}` : 'Todos os fretes'}
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800">
+              <span className="text-slate-400 text-[10px] uppercase font-bold block">Valor CT-e (Fiscal)</span>
+              <strong className="text-base font-mono font-black text-blue-400">
+                {formatMoney(relResumoSimplificado.totais?.total_valor_cte)}
+              </strong>
+              <span className="text-[10px] text-slate-500 block">Faturado em documento oficial</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+              <span className="text-amber-300 text-[10px] uppercase font-bold block">Frete Por Fora (Excedente)</span>
+              <strong className="text-base font-mono font-black text-amber-400">
+                {formatMoney(relResumoSimplificado.totais?.total_por_fora)}
+              </strong>
+              <span className="text-[10px] text-amber-300/70 block">Diferença acordada s/ CT-e</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+              <span className="text-emerald-300 text-[10px] uppercase font-bold block">Valor Total das Cargas</span>
+              <strong className="text-base font-mono font-black text-emerald-400">
+                {formatMoney(relResumoSimplificado.totais?.total_geral)}
+              </strong>
+              <span className="text-[10px] text-emerald-300/70 block">CT-e + Frete Por Fora</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30">
+              <span className="text-rose-300 text-[10px] uppercase font-bold block">Saldo Restante a Pagar</span>
+              <strong className="text-base font-mono font-black text-rose-400">
+                {formatMoney(relResumoSimplificado.totais?.total_saldo_pendente)}
+              </strong>
+              <span className="text-[10px] text-rose-300/70 block">
+                {Number(relResumoSimplificado.totais?.total_saldo_pendente || 0) <= 0.01 ? '100% Liquidado' : 'Aguardando quitação'}
+              </span>
+            </div>
+          </div>
+
+          {/* PRÉ-VISUALIZAÇÃO DO TEXTO WHATSAPP (EXATAMENTE COMO O EXEMPLO DO USUÁRIO) */}
+          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 print:hidden space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Share2 className="h-4 w-4 text-emerald-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Formato de Texto para WhatsApp (Pronto para envio):
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyWhatsAppResumo}
+                className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+              >
+                {copiedWhatsAppResumo ? <Check className="h-3 w-3" /> : null}
+                <span>{copiedWhatsAppResumo ? 'Copiado!' : 'Copiar Tudo'}</span>
+              </button>
+            </div>
+            <pre className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 whitespace-pre-wrap select-all">
+              {relResumoSimplificado.texto_whatsapp || 'Nenhum frete encontrado com os filtros selecionados.'}
+            </pre>
+          </div>
+
+          {/* TABELA ULTRA-LIMPA DE RESUMO SIMPLIFICADO */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl print-container">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs print-table">
+                <thead className="bg-slate-800/80 uppercase text-[10px] font-bold text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th className="px-3 py-2.5">CT-e / Documento</th>
+                    <th className="px-3 py-2.5">Fornecedor / Motorista</th>
+                    <th className="px-3 py-2.5 text-right font-mono">Valor CT-e</th>
+                    <th className="px-3 py-2.5 text-right font-mono">Por Fora</th>
+                    <th className="px-3 py-2.5 text-right font-mono font-black">Valor Total</th>
+                    <th className="px-3 py-2.5 text-center">Status</th>
+                    <th className="px-3 py-2.5 text-center print:hidden">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 print:divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400 print:text-slate-800">
+                        Carregando resumo simplificado...
+                      </td>
+                    </tr>
+                  ) : (relResumoSimplificado.itens || []).length > 0 ? (
+                    (relResumoSimplificado.itens || []).map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                        <td className="px-3 py-2 font-mono">
+                          <span className="font-bold text-white print:text-slate-900 block text-xs">
+                            CT-e {item.numero_cte || 'S/N'}
+                          </span>
+                          {item.numero_cte_2 && (
+                            <span className="text-[10px] text-purple-300 block font-mono font-semibold">
+                              + CT-e 2: {item.numero_cte_2}
+                            </span>
+                          )}
+                          <span className="text-[9.5px] text-slate-400 print:text-slate-600">
+                            {item.data_emissao ? new Date(item.data_emissao + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-2">
+                          <span className="font-bold text-amber-300 print:text-slate-900 block text-xs">
+                            {item.fornecedor}
+                          </span>
+                          <span className="text-[10px] text-slate-300 print:text-slate-700 block truncate max-w-[200px]" title={item.motorista_nome}>
+                            {item.motorista_nome} {item.placa_veiculo ? `• Placa: ${item.placa_veiculo}` : ''}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-2 text-right font-mono font-bold text-blue-400 print:text-slate-900 text-xs">
+                          {formatMoney(item.valor_cte)}
+                        </td>
+
+                        <td className="px-3 py-2 text-right font-mono font-bold text-amber-400 print:text-slate-900 text-xs">
+                          {formatMoney(item.valor_por_fora)}
+                        </td>
+
+                        <td className="px-3 py-2 text-right font-mono font-black text-emerald-400 print:text-slate-900 text-xs">
+                          {formatMoney(item.valor_total)}
+                        </td>
+
+                        <td className="px-3 py-2 text-center">
+                          {item.status === 'quitado' ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 print:text-slate-900 print:bg-transparent font-bold">
+                              Quitado ✅
+                            </span>
+                          ) : item.status === 'parcial' ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 print:text-slate-900 print:bg-transparent font-bold">
+                              Parcial ⏳
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 print:text-slate-900 print:bg-transparent font-bold">
+                              Em Aberto ⚠️
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="px-3 py-2 text-center print:hidden">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLinhaWhatsApp(item)}
+                              className="px-2 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+                              title="Copiar linha para WhatsApp"
+                            >
+                              {copiedLinhaId === item.id ? <Check className="h-3 w-3" /> : <Share2 className="h-3 w-3" />}
+                              <span>{copiedLinhaId === item.id ? 'Copiado!' : 'WhatsApp'}</span>
+                            </button>
+
+                            {onOpenRecibo && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenRecibo({ id: item.id })}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+                                title="Imprimir Recibo da Operação"
+                              >
+                                <Printer className="h-3 w-3" />
+                                <span>Recibo</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500 print:text-slate-800">
+                        Nenhum CT-e encontrado para os filtros selecionados.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+
+                {/* RODAPÉ COM TOTALIZADORES */}
+                <tfoot className="bg-slate-850 font-bold border-t border-slate-700 print:bg-slate-100 print:border-slate-400 text-xs">
+                  <tr>
+                    <td colSpan={2} className="px-3 py-2.5 text-white print:text-slate-900 uppercase">
+                      Total ({relResumoSimplificado.totais?.total_ctes || 0} CT-es)
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-blue-400 print:text-slate-900 text-xs">
+                      {formatMoney(relResumoSimplificado.totais?.total_valor_cte)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-amber-400 print:text-slate-900 text-xs">
+                      {formatMoney(relResumoSimplificado.totais?.total_por_fora)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-emerald-400 print:text-slate-900 text-xs font-black">
+                      {formatMoney(relResumoSimplificado.totais?.total_geral)}
+                    </td>
+                    <td colSpan={2} className="px-3 py-2.5 text-center text-[10px] text-slate-400 print:text-slate-600">
+                      Saldo Restante: <strong className="text-rose-400 font-mono">{formatMoney(relResumoSimplificado.totais?.total_saldo_pendente)}</strong>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 1. RELATÓRIO DE REPASSES & COMISSÕES DE AGENCIAMENTO */}

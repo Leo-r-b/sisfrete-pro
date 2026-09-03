@@ -97,6 +97,7 @@ router.get('/relatorios/dre-operacional', authMiddleware, relatorioController.ge
 router.get('/relatorios/canhotos-pod', authMiddleware, relatorioController.getRelatorioCanhotosPod);
 router.get('/relatorios/manutencao-frota', authMiddleware, relatorioController.getRelatorioManutencaoFrota);
 router.get('/relatorios/contas-pagas', authMiddleware, relatorioController.getRelatorioContasPagas);
+router.get('/relatorios/resumo-simplificado', authMiddleware, relatorioController.getRelatorioResumoSimplificado);
 
 
 // --- IMPORTAÇÃO CT-E (XML / DACTE) ---
