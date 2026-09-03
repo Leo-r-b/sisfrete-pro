@@ -49,6 +49,7 @@ const createEmpresa = async (req, res) => {
       data_expiracao_teste,
       modo_operacao = 'padrao',
       percentual_comissao_padrao = 5.0,
+      modulos_ativos,
       razao_social,
       nome_fantasia,
       cnpj,
@@ -93,13 +94,21 @@ const createEmpresa = async (req, res) => {
       valorMensalidadeNum = 0;
     }
 
+    // Processar módulos ativos para a licença (JSON array ou null para padrão)
+    let modulosAtivosStr = null;
+    if (Array.isArray(modulos_ativos)) {
+      modulosAtivosStr = JSON.stringify(modulos_ativos);
+    } else if (typeof modulos_ativos === 'string' && modulos_ativos.trim() !== '') {
+      modulosAtivosStr = modulos_ativos.trim();
+    }
+
     const ins = db.prepare(`
       INSERT INTO empresas (
         codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, data_adesao,
         tipo_licenca, data_expiracao_teste,
-        modo_operacao, percentual_comissao_padrao,
+        modo_operacao, percentual_comissao_padrao, modulos_ativos,
         razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, banco, agencia, conta, cidade, uf, ativo
-      ) VALUES (?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      ) VALUES (?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       codLicenca,
       Number(limite_logins) || 5,
@@ -109,6 +118,7 @@ const createEmpresa = async (req, res) => {
       dataExpTesteFinal,
       modo_operacao || 'padrao',
       Number(percentual_comissao_padrao) || 5.0,
+      modulosAtivosStr,
       razao_social.trim(),
       (nome_fantasia || razao_social).trim(),
       cnpj || '',
@@ -227,6 +237,7 @@ const updateEmpresa = async (req, res) => {
       data_expiracao_teste,
       modo_operacao,
       percentual_comissao_padrao,
+      modulos_ativos,
       razao_social,
       nome_fantasia,
       cnpj,
@@ -241,7 +252,7 @@ const updateEmpresa = async (req, res) => {
       ativo,
     } = req.body;
 
-    const existing = db.prepare('SELECT id, codigo_licenca, valor_mensalidade, tipo_licenca, data_expiracao_teste FROM empresas WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT id, codigo_licenca, valor_mensalidade, tipo_licenca, data_expiracao_teste, modulos_ativos FROM empresas WHERE id = ?').get(id);
     if (!existing) {
       return res.status(404).json({ error: 'Empresa não encontrada.' });
     }
@@ -274,12 +285,24 @@ const updateEmpresa = async (req, res) => {
       valorMensalidadeFinal = 0;
     }
 
+    let modulosAtivosFinal = existing.modulos_ativos;
+    if (modulos_ativos !== undefined) {
+      if (Array.isArray(modulos_ativos)) {
+        modulosAtivosFinal = JSON.stringify(modulos_ativos);
+      } else if (typeof modulos_ativos === 'string') {
+        modulosAtivosFinal = modulos_ativos.trim() || null;
+      } else if (modulos_ativos === null) {
+        modulosAtivosFinal = null;
+      }
+    }
+
     db.prepare(`
       UPDATE empresas SET
         codigo_licenca = ?, limite_logins = ?, valor_mensalidade = ?, dia_vencimento = ?,
         tipo_licenca = ?, data_expiracao_teste = ?,
         modo_operacao = COALESCE(?, modo_operacao, 'padrao'),
         percentual_comissao_padrao = COALESCE(?, percentual_comissao_padrao, 5.0),
+        modulos_ativos = ?,
         razao_social = ?, nome_fantasia = ?, cnpj = ?,
         telefone = ?, email = ?, chave_pix = ?, banco = ?, agencia = ?, conta = ?,
         cidade = ?, uf = ?, ativo = ?, updated_at = CURRENT_TIMESTAMP
@@ -293,6 +316,7 @@ const updateEmpresa = async (req, res) => {
       dataExpTesteFinal,
       modo_operacao || null,
       percentual_comissao_padrao !== undefined ? Number(percentual_comissao_padrao) : null,
+      modulosAtivosFinal,
       razao_social || 'SisFrete Transportes',
       nome_fantasia || razao_social,
       cnpj || '',
@@ -322,6 +346,7 @@ const updateEmpresa = async (req, res) => {
                   tipo_licenca = ?, data_expiracao_teste = ?,
                   modo_operacao = COALESCE(?, modo_operacao, 'padrao'),
                   percentual_comissao_padrao = COALESCE(?, percentual_comissao_padrao, 5.0),
+                  modulos_ativos = ?,
                   razao_social = ?, nome_fantasia = ?, cnpj = ?,
                   telefone = ?, email = ?, chave_pix = ?, banco = ?, agencia = ?, conta = ?,
                   cidade = ?, uf = ?, ativo = ?, updated_at = CURRENT_TIMESTAMP
@@ -331,6 +356,7 @@ const updateEmpresa = async (req, res) => {
             valorMensalidadeFinal, dia_vencimento !== undefined ? Number(dia_vencimento) : 10,
             tipoLicencaFinal, dataExpTesteFinal,
             modo_operacao || null, percentual_comissao_padrao !== undefined ? Number(percentual_comissao_padrao) : null,
+            modulosAtivosFinal,
             razao_social || 'SisFrete Transportes', nome_fantasia || razao_social, cnpj || '',
             telefone || '', email || '', chave_pix || '', banco || '', agencia || '', conta || '',
             cidade || '', uf || 'PR', ativo !== undefined ? (ativo ? 1 : 0) : 1,

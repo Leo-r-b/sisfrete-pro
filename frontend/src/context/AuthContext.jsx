@@ -208,6 +208,34 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const getModulosAtivosList = (empresaObj) => {
+    const emp = empresaObj || activeEmpresa;
+    if (!emp) return null;
+    if (Array.isArray(emp.modulos_ativos)) return emp.modulos_ativos;
+    if (typeof emp.modulos_ativos === 'string' && emp.modulos_ativos.trim() !== '') {
+      try {
+        const parsed = JSON.parse(emp.modulos_ativos);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return null; // null significa todos liberados por padrão (compatibilidade total)
+  };
+
+  const isModuloAtivo = (moduloId) => {
+    // Super Admin tem acesso a todos os módulos sempre
+    if (user?.role === 'super_admin') return true;
+    
+    const list = getModulosAtivosList();
+    if (!list) {
+      // Se não tem configuração de módulos específica, respeita modo de operação (legado)
+      if (activeEmpresa?.modo_operacao === 'gestao_pagamentos') {
+        return !['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(moduloId);
+      }
+      return true;
+    }
+    return list.includes(moduloId);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -219,6 +247,8 @@ export function AuthProvider({ children }) {
         loadEmpresas,
         metodologiaAtiva,
         setMetodologiaAtiva,
+        getModulosAtivosList,
+        isModuloAtivo,
         isAuthenticated: !!user,
         loading,
         login,

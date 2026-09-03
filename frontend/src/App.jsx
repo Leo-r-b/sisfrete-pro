@@ -23,7 +23,7 @@ import LancamentoModal from './components/LancamentoModal';
 import CalculadoraAnttModal from './components/CalculadoraAnttModal';
 
 function MainApp() {
-  const { user, activeEmpresa, isAuthenticated, loading } = useAuth();
+  const { user, activeEmpresa, isAuthenticated, loading, getModulosAtivosList } = useAuth();
   const [activeTab, setActiveTab] = useState(
     user?.role === 'super_admin' ? 'saas_master' : 'dashboard'
   );
@@ -46,13 +46,24 @@ function MainApp() {
   }, [user?.role]);
 
   const isLicencaGestao = activeEmpresa?.modo_operacao === 'gestao_pagamentos';
+  const modulosConfigurados = getModulosAtivosList ? getModulosAtivosList(activeEmpresa) : null;
 
-  // Redirecionar para Dashboard se a empresa em Gestão de Pagamentos tentar abrir módulo indisponível (CT-e próprio, MDF-e, Torre ou Frotas)
+  // Redirecionar suavemente se o usuário tentar acessar aba desabilitada para sua licença
   useEffect(() => {
-    if (isLicencaGestao && ['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(activeTab)) {
+    if (user?.role === 'super_admin') return; // Super admin tem acesso irrestrito
+    if (activeTab === 'saas_master') {
+      setActiveTab('dashboard');
+      return;
+    }
+
+    if (modulosConfigurados && Array.isArray(modulosConfigurados) && modulosConfigurados.length > 0) {
+      if (!modulosConfigurados.includes(activeTab)) {
+        setActiveTab(modulosConfigurados[0] || 'dashboard');
+      }
+    } else if (isLicencaGestao && ['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(activeTab)) {
       setActiveTab('dashboard');
     }
-  }, [isLicencaGestao, activeTab]);
+  }, [modulosConfigurados, isLicencaGestao, activeTab, user?.role]);
 
   // Modais Globais
   const [isFreteModalOpen, setIsFreteModalOpen] = useState(false);

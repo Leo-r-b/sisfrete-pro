@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { MODULOS_SISTEMA } from './SaasMasterPanel';
 
 export default function Configuracoes() {
   const { user, updateProfile, changePassword, empresas, activeEmpresa, switchEmpresa, loadEmpresas, refreshCurrentUser } = useAuth();
@@ -473,6 +474,7 @@ export default function Configuracoes() {
       dia_vencimento: 10,
       tipo_licenca: 'paga',
       data_expiracao_teste: expTeste,
+      modulos_ativos: MODULOS_SISTEMA.map(m => m.id),
       razao_social: '',
       nome_fantasia: '',
       cnpj: '',
@@ -495,6 +497,20 @@ export default function Configuracoes() {
     d.setDate(d.getDate() + 7);
     const expTeste = d.toISOString().slice(0, 10);
 
+    let modulosIniciais = MODULOS_SISTEMA.map(m => m.id);
+    if (emp.modulos_ativos) {
+      if (Array.isArray(emp.modulos_ativos)) {
+        modulosIniciais = emp.modulos_ativos;
+      } else if (typeof emp.modulos_ativos === 'string') {
+        try {
+          const parsed = JSON.parse(emp.modulos_ativos);
+          if (Array.isArray(parsed)) modulosIniciais = parsed;
+        } catch (e) {}
+      }
+    } else if (emp.modo_operacao === 'gestao_pagamentos') {
+      modulosIniciais = ['dashboard', 'importar_xml', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes'];
+    }
+
     setEmpresaModalFormData({
       codigo_licenca: emp.codigo_licenca || String(emp.id),
       limite_logins: emp.limite_logins || 5,
@@ -502,6 +518,7 @@ export default function Configuracoes() {
       dia_vencimento: emp.dia_vencimento !== undefined ? emp.dia_vencimento : 10,
       tipo_licenca: emp.tipo_licenca || (Number(emp.valor_mensalidade) === 0 ? 'gratuita' : 'paga'),
       data_expiracao_teste: emp.data_expiracao_teste || expTeste,
+      modulos_ativos: modulosIniciais,
       razao_social: emp.razao_social || '',
       nome_fantasia: emp.nome_fantasia || '',
       cnpj: emp.cnpj || '',
@@ -2098,6 +2115,98 @@ export default function Configuracoes() {
                     className="w-full bg-slate-950 border border-blue-500/50 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none font-mono font-bold"
                   />
                   <p className="text-[10px] text-slate-400 mt-0.5">Qtd. máxima de colaboradores.</p>
+                </div>
+              </div>
+
+              {/* MÓDULOS E ABAS HABILITADAS PARA A LICENÇA */}
+              <div className="p-3.5 bg-slate-950/80 border border-emerald-500/30 rounded-xl space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-800 pb-2">
+                  <div>
+                    <h4 className="font-bold text-emerald-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      <span>Abas & Módulos Habilitados</span>
+                    </h4>
+                    <p className="text-[10px] text-slate-400">
+                      Defina quais abas a transportadora terá acesso neste plano.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaModalFormData({
+                        ...empresaModalFormData,
+                        modulos_ativos: MODULOS_SISTEMA.map(m => m.id)
+                      })}
+                      className="px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[9px] font-bold transition cursor-pointer"
+                    >
+                      💎 Completo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaModalFormData({
+                        ...empresaModalFormData,
+                        modulos_ativos: ['dashboard', 'importar_xml', 'torre_controle', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes']
+                      })}
+                      className="px-2 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[9px] font-bold transition cursor-pointer"
+                    >
+                      🚚 Sem Fiscal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaModalFormData({
+                        ...empresaModalFormData,
+                        modulos_ativos: ['dashboard', 'importar_xml', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes']
+                      })}
+                      className="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-[9px] font-bold transition cursor-pointer"
+                    >
+                      💼 Pagamentos
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5 max-h-48 overflow-y-auto pr-1">
+                  {MODULOS_SISTEMA.map((modulo) => {
+                    const isAtivo = empresaModalFormData.modulos_ativos?.includes(modulo.id);
+                    return (
+                      <div
+                        key={modulo.id}
+                        onClick={() => {
+                          const atuais = empresaModalFormData.modulos_ativos || [];
+                          let novos;
+                          if (atuais.includes(modulo.id)) {
+                            if (atuais.length <= 1) return;
+                            novos = atuais.filter(id => id !== modulo.id);
+                          } else {
+                            novos = [...atuais, modulo.id];
+                          }
+                          setEmpresaModalFormData({ ...empresaModalFormData, modulos_ativos: novos });
+                        }}
+                        className={`p-2 rounded-lg border transition cursor-pointer flex items-start gap-2 ${
+                          isAtivo 
+                            ? 'bg-emerald-950/20 border-emerald-500/40' 
+                            : 'bg-slate-900/40 border-slate-800 opacity-60'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isAtivo}
+                          onChange={() => {}}
+                          className="mt-0.5 rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-900 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1">
+                            <span className="font-bold text-white text-[11px]">{modulo.nome}</span>
+                            {modulo.tagFiscal && (
+                              <span className="text-[8px] font-bold px-1 rounded bg-amber-500/20 text-amber-300">
+                                Fiscal
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-slate-400 truncate">{modulo.desc}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

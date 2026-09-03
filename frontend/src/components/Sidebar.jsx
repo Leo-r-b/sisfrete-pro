@@ -21,7 +21,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ activeTab, setActiveTab, onNovoFrete, onOpenCalculadora, isMobileOpen, onCloseMobile }) {
-  const { user, activeEmpresa, logout } = useAuth();
+  const { user, activeEmpresa, logout, getModulosAtivosList } = useAuth();
   const isLicencaGestao = activeEmpresa?.modo_operacao === 'gestao_pagamentos';
   const isLicencaRepasse = activeEmpresa?.modo_operacao === 'agenciamento_repasse';
 
@@ -45,10 +45,16 @@ export default function Sidebar({ activeTab, setActiveTab, onNovoFrete, onOpenCa
     { id: 'configuracoes', label: 'Configurações & Acesso', icon: Settings },
   ];
 
-  // Na modalidade de Gestão de Pagamentos (cliente do agenciador), não há emissão de CT-e, MDF-e, Torre nem Frotas
-  const menuItems = isLicencaGestao
-    ? allMenuItems.filter(item => !['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(item.id))
-    : allMenuItems;
+  // Controle Granular de Abas da Licença
+  const modulosConfigurados = getModulosAtivosList ? getModulosAtivosList(activeEmpresa) : null;
+
+  const menuItems = (user?.role === 'super_admin')
+    ? allMenuItems
+    : (modulosConfigurados
+        ? allMenuItems.filter(item => modulosConfigurados.includes(item.id))
+        : (isLicencaGestao
+            ? allMenuItems.filter(item => !['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(item.id))
+            : allMenuItems));
 
   const handleNavClick = (id) => {
     setActiveTab(id);

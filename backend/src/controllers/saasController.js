@@ -100,6 +100,7 @@ const getSaasDashboard = (req, res) => {
         e.id, e.codigo_licenca, e.razao_social, e.nome_fantasia, e.cnpj, e.cidade, e.uf, e.ativo,
         e.limite_logins, e.valor_mensalidade, e.dia_vencimento, e.created_at, e.data_adesao,
         e.tipo_licenca, e.data_expiracao_teste, e.modo_operacao, e.percentual_comissao_padrao,
+        e.modulos_ativos,
         (SELECT COUNT(*) FROM users u WHERE u.empresa_id = e.id) as total_usuarios,
         (SELECT COUNT(*) FROM fretes f WHERE f.empresa_id = e.id) as total_fretes,
         c.id as cobranca_id,

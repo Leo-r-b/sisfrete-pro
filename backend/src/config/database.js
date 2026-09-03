@@ -851,6 +851,11 @@ function initDatabase() {
       db.exec("ALTER TABLE empresas ADD COLUMN metodologia_padrao TEXT DEFAULT 'hibrido'");
     } catch (e) {}
 
+    // Garantir coluna modulos_ativos em empresas (controle granular de abas)
+    try {
+      db.exec("ALTER TABLE empresas ADD COLUMN modulos_ativos TEXT");
+    } catch (e) {}
+
     // Garantir coluna origem_registro em fretes ('emissao_propria' vs 'importacao_terceiros')
     try {
       db.exec("ALTER TABLE fretes ADD COLUMN origem_registro TEXT DEFAULT 'emissao_propria'");

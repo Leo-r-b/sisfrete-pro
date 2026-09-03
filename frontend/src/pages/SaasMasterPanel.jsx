@@ -29,7 +29,11 @@ import {
   CreditCard,
   Receipt,
   FileCheck2,
-  ExternalLink
+  ExternalLink,
+  Layers,
+  Truck,
+  Upload,
+  Wrench
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -42,6 +46,20 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+
+export const MODULOS_SISTEMA = [
+  { id: 'dashboard', nome: 'Painel Geral', desc: 'Métricas, gráficos executivos e margem de lucro' },
+  { id: 'fretes', nome: 'Emissão de CT-e 4.00', desc: 'Emissão própria oficial SEFAZ, DACTE e Piso ANTT', tagFiscal: true },
+  { id: 'importar_xml', nome: 'Importar XML / Terceiros', desc: 'Importação de XMLs recebidos e rateio de fretes' },
+  { id: 'mdfe', nome: 'Manifestos (MDF-e 3.00)', desc: 'Manifesto Eletrônico de Cargas Modelo 58', tagFiscal: true },
+  { id: 'torre_controle', nome: 'Torre de Controle', desc: 'Checkpoints de viagem e link público de rastreio' },
+  { id: 'financeiro', nome: 'Financeiro Integrado', desc: 'Contas a Pagar/Receber, boletos e baixas PIX' },
+  { id: 'frotas', nome: 'Frotas & Manutenção', desc: 'Controle de veículos próprios, manutenção e pneus' },
+  { id: 'relatorios', nome: 'Relatórios & Extratos', desc: 'Extratos de motoristas, clientes e DRE analítico' },
+  { id: 'motoristas', nome: 'Motoristas & Terceiros', desc: 'Cadastro de motoristas freteiros e transportadores' },
+  { id: 'clientes', nome: 'Clientes / Embarcadores', desc: 'Cadastro de clientes e tomadores de frete' },
+  { id: 'configuracoes', nome: 'Configurações da Empresa', desc: 'Dados cadastrais da empresa e usuários' },
+];
 
 export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
   const { user, empresas, switchEmpresa, loadEmpresas } = useAuth();
@@ -92,6 +110,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     data_expiracao_teste: '',
     modo_operacao: 'padrao',
     percentual_comissao_padrao: 5.0,
+    modulos_ativos: MODULOS_SISTEMA.map(m => m.id),
     razao_social: '',
     nome_fantasia: '',
     cnpj: '',
@@ -264,6 +283,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
       data_expiracao_teste: expTeste,
       modo_operacao: 'padrao',
       percentual_comissao_padrao: 5.0,
+      modulos_ativos: MODULOS_SISTEMA.map(m => m.id),
       razao_social: '',
       nome_fantasia: '',
       cnpj: '',
@@ -290,6 +310,20 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     d.setDate(d.getDate() + 7);
     const expTesteDefault = d.toISOString().slice(0, 10);
 
+    let modulosIniciais = MODULOS_SISTEMA.map(m => m.id);
+    if (emp.modulos_ativos) {
+      if (Array.isArray(emp.modulos_ativos)) {
+        modulosIniciais = emp.modulos_ativos;
+      } else if (typeof emp.modulos_ativos === 'string') {
+        try {
+          const parsed = JSON.parse(emp.modulos_ativos);
+          if (Array.isArray(parsed)) modulosIniciais = parsed;
+        } catch (e) {}
+      }
+    } else if (emp.modo_operacao === 'gestao_pagamentos') {
+      modulosIniciais = ['dashboard', 'importar_xml', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes'];
+    }
+
     setEmpresaForm({
       codigo_licenca: emp.codigo_licenca || String(emp.id),
       limite_logins: emp.limite_logins || 5,
@@ -299,6 +333,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
       data_expiracao_teste: emp.data_expiracao_teste || expTesteDefault,
       modo_operacao: emp.modo_operacao || 'padrao',
       percentual_comissao_padrao: emp.percentual_comissao_padrao !== undefined ? emp.percentual_comissao_padrao : 5.0,
+      modulos_ativos: modulosIniciais,
       razao_social: emp.razao_social || '',
       nome_fantasia: emp.nome_fantasia || '',
       cnpj: emp.cnpj || '',
@@ -952,6 +987,24 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                         }`}>
                           {isAtivo ? '✓ Ativa' : '✕ Bloqueada'}
                         </span>
+
+                        {emp.modulos_ativos ? (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+                            <Layers className="h-2.5 w-2.5 text-purple-400" />
+                            <span>
+                              {(() => {
+                                try {
+                                  const arr = typeof emp.modulos_ativos === 'string' ? JSON.parse(emp.modulos_ativos) : emp.modulos_ativos;
+                                  return `${arr.length} abas liberadas`;
+                                } catch(e) { return 'Módulos customizados'; }
+                              })()}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/40 text-emerald-400 border border-emerald-500/30">
+                            💎 Todas as Abas
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1861,6 +1914,98 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                     ? '💡 Modo Agenciamento & Repasse: Ao importar o CT-e, o operador digita o Frete Real. O sistema retém automaticamente a comissão da empresa e calcula o Valor de Repasse (CT-e - Frete Real - Comissão).'
                     : '💡 Modo Subcontratação Padrão: Frete Venda - Frete Compra = Margem / Adiantamento e Saldo do Motorista.'}
                 </p>
+              </div>
+
+              {/* MÓDULOS E ABAS HABILITADAS PARA A LICENÇA */}
+              <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                  <div>
+                    <h4 className="font-bold text-emerald-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      <span>Abas & Módulos Habilitados nesta Licença</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Selecione quais abas a transportadora terá acesso para definir o plano e valor cobrado.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaForm({
+                        ...empresaForm,
+                        modulos_ativos: MODULOS_SISTEMA.map(m => m.id)
+                      })}
+                      className="px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold transition cursor-pointer"
+                    >
+                      💎 Plano Completo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaForm({
+                        ...empresaForm,
+                        modulos_ativos: ['dashboard', 'importar_xml', 'torre_controle', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes']
+                      })}
+                      className="px-2 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-bold transition cursor-pointer"
+                    >
+                      🚚 Subcontratação (Sem CT-e/MDF-e)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmpresaForm({
+                        ...empresaForm,
+                        modulos_ativos: ['dashboard', 'importar_xml', 'financeiro', 'relatorios', 'motoristas', 'clientes', 'configuracoes']
+                      })}
+                      className="px-2 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold transition cursor-pointer"
+                    >
+                      💼 Gestão de Pagamentos
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {MODULOS_SISTEMA.map((modulo) => {
+                    const isAtivo = empresaForm.modulos_ativos?.includes(modulo.id);
+                    return (
+                      <div
+                        key={modulo.id}
+                        onClick={() => {
+                          const atuais = empresaForm.modulos_ativos || [];
+                          let novos;
+                          if (atuais.includes(modulo.id)) {
+                            if (atuais.length <= 1) return; // Não permitir desmarcar todos os módulos
+                            novos = atuais.filter(id => id !== modulo.id);
+                          } else {
+                            novos = [...atuais, modulo.id];
+                          }
+                          setEmpresaForm({ ...empresaForm, modulos_ativos: novos });
+                        }}
+                        className={`p-2.5 rounded-xl border transition cursor-pointer flex items-start gap-2.5 ${
+                          isAtivo 
+                            ? 'bg-emerald-950/20 border-emerald-500/40 hover:border-emerald-500' 
+                            : 'bg-slate-900/40 border-slate-800/80 opacity-60 hover:opacity-90 hover:border-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isAtivo}
+                          onChange={() => {}}
+                          className="mt-0.5 rounded border-slate-700 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-900 cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-white text-xs">{modulo.nome}</span>
+                            {modulo.tagFiscal && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                                Fiscal SEFAZ
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{modulo.desc}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* DADOS CADASTRAIS DA EMPRESA */}

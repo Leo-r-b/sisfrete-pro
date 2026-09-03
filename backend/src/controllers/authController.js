@@ -191,7 +191,7 @@ const getProfile = async (req, res) => {
 
     let empresa = null;
     if (user.empresa_id) {
-      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(user.empresa_id);
+      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, modulos_ativos, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(user.empresa_id);
     }
 
     return res.json({
@@ -254,7 +254,7 @@ const updateProfile = async (req, res) => {
     
     let empresa = null;
     if (updatedUser.empresa_id) {
-      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(updatedUser.empresa_id);
+      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, modulos_ativos, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(updatedUser.empresa_id);
     }
 
     const newToken = generateToken(updatedUser);
