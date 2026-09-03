@@ -373,6 +373,24 @@ _Favor enviar o comprovante de pagamento após a transferência._
   };
 
   const getCategoriaBadge = (cat, nome) => {
+    if (cat === 'frete_complemento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-950/40 border border-amber-500/40 text-amber-300 shadow-sm" title="Frete Complementar ('Por Fora')">
+          <Layers className="h-3 w-3 text-amber-400" />
+          <span>Frete Por Fora</span>
+        </span>
+      );
+    }
+
+    if (cat === 'faturamento_frete') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-emerald-950/40 border border-emerald-500/40 text-emerald-300">
+          <Truck className="h-3 w-3 text-emerald-400" />
+          <span>{nome || 'Recebimento CT-e'}</span>
+        </span>
+      );
+    }
+
     const icons = {
       energia: Zap,
       agua: Droplet,

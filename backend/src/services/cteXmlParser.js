@@ -219,21 +219,54 @@ function parseInfCteNode(infCte, parsedRoot, cleanXml) {
   // Identificação correta do TOMADOR DO SERVIÇO (Cliente que paga o frete)
   const { clienteNome, clienteCnpj } = extrairTomadorServico(infCte, ide, rem, dest, cleanXml);
 
-  // Peso
-  let pesoKg = 0;
+  // Peso: REGRA SAGRADA - PRIORIZAR O PESO LÍQUIDO DA CARGA (Mercadoria)
+  // Evita extrair o Peso Bruto do Caminhão (veículo + carga = 50+ toneladas)
+  let pesoLiquidoEncontrado = 0;
+  let pesoBrutoEncontrado = 0;
+  let pesoPadraoEncontrado = 0;
+
   if (infCarga.infQ) {
     const qArray = Array.isArray(infCarga.infQ) ? infCarga.infQ : [infCarga.infQ];
     for (const q of qArray) {
-      const qVal = parseFloat(q.qCarga || 0);
-      if (q.cUnid === '02' || q.tpMed === 'PESO EM TONELADAS') {
-        pesoKg = qVal * 1000;
-        break;
+      let qVal = parseFloat(q.qCarga || 0);
+      if (qVal <= 0) continue;
+
+      const isTon = q.cUnid === '02' || String(q.tpMed || '').toUpperCase().includes('TONELADA');
+      if (isTon) {
+        qVal = qVal * 1000;
       }
-      if (q.tpMed === 'PESO BRUTO' || q.tpMed === 'PESO DECLARADO' || q.tpMed === 'PESO REAL' || q.cUnid === '01' || !pesoKg) {
-        pesoKg = qVal;
+
+      const tpMed = String(q.tpMed || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      if (tpMed.includes('LIQUIDO') || tpMed.includes('LIQ')) {
+        pesoLiquidoEncontrado = qVal;
+      } else if (tpMed.includes('BRUTO')) {
+        pesoBrutoEncontrado = qVal;
+      } else if (tpMed.includes('BASE') || tpMed.includes('DECLARADO') || tpMed.includes('REAL')) {
+        if (!pesoPadraoEncontrado) pesoPadraoEncontrado = qVal;
+      } else if (!pesoPadraoEncontrado) {
+        pesoPadraoEncontrado = qVal;
       }
     }
   }
+
+  // Verificar também se há tag <pesoL> (Peso Líquido presente em NF-e vinculadas)
+  const pesoLMatch = cleanXml.match(/<pesoL>([\d\.]+)<\/pesoL>/i);
+  if (pesoLMatch && parseFloat(pesoLMatch[1]) > 0) {
+    pesoLiquidoEncontrado = parseFloat(pesoLMatch[1]);
+  }
+
+  // Regex direta buscando bloco com LIQUIDO no XML
+  if (!pesoLiquidoEncontrado) {
+    const rxLiq = cleanXml.match(/<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>[\s\S]*?<qCarga>([\d\.]+)<\/qCarga>/i) ||
+                  cleanXml.match(/<qCarga>([\d\.]+)<\/qCarga>[\s\S]*?<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>/i);
+    if (rxLiq && parseFloat(rxLiq[1]) > 0) {
+      pesoLiquidoEncontrado = parseFloat(rxLiq[1]);
+    }
+  }
+
+  // Peso final: Peso Líquido tem preferência absoluta. Se não houver, usa o padrão ou bruto.
+  let pesoKg = pesoLiquidoEncontrado || pesoPadraoEncontrado || pesoBrutoEncontrado || 0;
 
   if (!pesoKg) {
     const pesoMatch = cleanXml.match(/<qCarga>([\d\.]+)<\/qCarga>/i);
@@ -572,8 +605,11 @@ function parseViaRegexFallback(xml) {
   const nCTMatch = xml.match(/<nCT>(\d+)<\/nCT>/i) || xml.match(/<nNF>(\d+)<\/nNF>/i);
   const numeroCte = nCTMatch ? nCTMatch[1].padStart(6, '0') : '';
 
+  const pesoLMatch = xml.match(/<pesoL>([\d\.]+)<\/pesoL>/i);
+  const rxLiq = xml.match(/<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>[\s\S]*?<qCarga>([\d\.]+)<\/qCarga>/i) ||
+                xml.match(/<qCarga>([\d\.]+)<\/qCarga>[\s\S]*?<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>/i);
   const qCargaMatch = xml.match(/<qCarga>([\d\.]+)<\/qCarga>/i) || xml.match(/<pesoB>([\d\.]+)<\/pesoB>/i);
-  const pesoKg = qCargaMatch ? parseFloat(qCargaMatch[1]) : 0;
+  const pesoKg = pesoLMatch ? parseFloat(pesoLMatch[1]) : (rxLiq ? parseFloat(rxLiq[1]) : (qCargaMatch ? parseFloat(qCargaMatch[1]) : 0));
 
   const munIniMatch = xml.match(/<xMunIni>([^<]+)<\/xMunIni>/i) || xml.match(/<xMun>([^<]+)<\/xMun>/i);
   const ufIniMatch = xml.match(/<UFIni>([^<]+)<\/UFIni>/i) || xml.match(/<UF>([^<]+)<\/UF>/i);

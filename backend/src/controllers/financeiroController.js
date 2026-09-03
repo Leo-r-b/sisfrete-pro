@@ -105,14 +105,9 @@ const getDashboardKPIs = (req, res) => {
     const totalComissaoVal = Number((fretesTotais.total_comissao || 0).toFixed(2));
     const margemMediaPct = totalVendaVal > 0 ? Number(((totalComissaoVal / totalVendaVal) * 100).toFixed(1)) : 0;
 
-    // Se for modo Gestão de Pagamentos, a empresa NÃO é emissora do CT-e (não possui faturamento a receber do frete)
-    const totalRecebidoGeral = isGestaoEmpresa
-      ? (titulosStats.avulso_recebido || 0)
-      : (fretesReceitas.recebidos_1 || 0) + (fretesReceitas.recebidos_2 || 0) + (titulosStats.avulso_recebido || 0);
-
-    const totalAReceberGeral = isGestaoEmpresa
-      ? (titulosStats.avulso_a_receber || 0)
-      : (fretesReceitas.pendentes_1 || 0) + (fretesReceitas.pendentes_2 || 0) + (titulosStats.avulso_a_receber || 0);
+    // Totalização equilibrada das receitas (CT-e recebidos e pendentes do cliente + avulsos)
+    const totalRecebidoGeral = (fretesReceitas.recebidos_1 || 0) + (fretesReceitas.recebidos_2 || 0) + (titulosStats.avulso_recebido || 0);
+    const totalAReceberGeral = (fretesReceitas.pendentes_1 || 0) + (fretesReceitas.pendentes_2 || 0) + (titulosStats.avulso_a_receber || 0);
 
     const totalPagoFreteiros = Math.max(pagamentosHistorico.total_pago_freteiros || 0, fretesTotais.freteiro_quitado || 0);
     const totalPagoGeral = totalPagoFreteiros + (fretesTotais.repasse_pago || 0) + (fretesTotais.comissao_paga || 0) + (titulosStats.avulso_pago || 0);
@@ -302,10 +297,9 @@ const listTitulos = (req, res) => {
         const v2 = isTriangular ? Number(f.valor_frete_venda_2 || 0) : 0;
         const vTotalReceber = Number((v1 + v2).toFixed(2));
 
-        // 2.1 Contas a Receber: CT-e 1 (+ CT-e 2 Triangular Unificado em 1 Linha)
-        // REGRA DE OURO: Na modalidade "gestao_pagamentos", a empresa é a contratante/cliente que paga (NÃO é emissora de CT-e e NÃO gera receita a receber)
-        if (f.tipo_operacao !== 'gestao_pagamentos' && (tipo === 'receber' || tipo === 'todos')) {
-          if (!fretesComTitulosAvulsos.has(`receber_${f.id}`)) {
+        // 2.1 Contas a Receber: Pagamento do CT-e (Recebimento do Cliente/Tomador)
+        if (tipo === 'receber' || tipo === 'todos') {
+          if (!fretesComTitulosAvulsos.has(`receber_${f.id}`) && vTotalReceber > 0) {
             const isRec1 = f.status_recebimento_cliente === 'recebido';
             const isRec2 = isTriangular ? (f.status_recebimento_cliente_2 === 'recebido') : true;
 
@@ -320,16 +314,17 @@ const listTitulos = (req, res) => {
               tipo: 'receber',
               origem: 'frete_cte',
               categoria: 'faturamento_frete',
-              categoria_nome: isTriangular ? 'Faturamento de Frete (2 CT-es)' : 'Faturamento de Frete / CT-e',
+              categoria_nome: 'Recebimento de CT-e',
               descricao: isTriangular 
-                ? `CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2 || 'S/N'} (${f.origem_cidade}/${f.origem_uf} ➔ ${f.destino_cidade}/${f.destino_uf})`
-                : `Frete CT-e Nº ${f.numero_cte || 'S/N'} (${f.origem_cidade}/${f.origem_uf} ➔ ${f.destino_cidade}/${f.destino_uf})`,
+                ? `Recebimento CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2 || 'S/N'} (${f.cliente_nome})`
+                : `Recebimento CT-e Nº ${f.numero_cte || 'S/N'} (${f.cliente_nome || 'Cliente Tomador'})`,
               numero_cte: f.numero_cte,
               numero_cte_2: f.numero_cte_2,
               nfe_referencia: f.nfe_referencia,
               nfe_referencia_2: f.nfe_referencia_2,
               cliente_nome: f.cliente_nome || 'Cliente Tomador',
               cliente_nome_2: f.cliente_nome_2 || f.cliente_nome,
+              pessoa_nome: f.cliente_nome || 'Cliente Tomador',
               cliente_cnpj: f.cliente_cnpj,
               cliente_cnpj_2: f.cliente_cnpj_2,
               valor_cte_1: v1,
@@ -357,44 +352,117 @@ const listTitulos = (req, res) => {
           }
         }
 
-        // 2.2 Contas a Pagar: Freteiro / Motorista
+        // 2.2 Contas a Pagar: Freteiro / Motorista & Frete Complementar ("Por Fora")
         if (tipo === 'pagar' || tipo === 'todos') {
           if (!fretesComTitulosAvulsos.has(`pagar_${f.id}`)) {
             const valorTotalFreteiro = Number(f.valor_frete_real || f.valor_frete_compra || (Number(f.valor_saldo_motorista || 0) + Number(f.valor_adiantamento || 0)) || 0);
             const valorPagoFreteiro = Number(f.total_pago_historico || f.valor_adiantamento || 0);
             const isQuitadoFreteiro = f.status_pagamento_motorista === 'quitado' || (valorTotalFreteiro > 0 && valorPagoFreteiro >= valorTotalFreteiro - 0.01);
+            const pesoTonFisico = f.peso_kg ? (f.peso_kg / 1000).toFixed(2) : '0.00';
 
-            const descFreteiro = isTriangular && f.numero_cte_2
-              ? `Freteiro CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2} (${f.placa_veiculo || 'S/N'})`
-              : `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.placa_veiculo || 'S/N'})`;
+            // Se o frete do motorista for MAIOR do que o valor do CT-e, divide automaticamente em Parcela Fiscal + Parcela Por Fora
+            const temComplementoPorFora = (vTotalReceber > 0 && valorTotalFreteiro > vTotalReceber);
+            const valorFiscalCte = temComplementoPorFora ? vTotalReceber : valorTotalFreteiro;
+            const valorComplementoPorFora = temComplementoPorFora ? Number((valorTotalFreteiro - vTotalReceber).toFixed(2)) : 0;
 
-            titulos.push({
-              id: `frete_pag_${f.id}`,
-              frete_id: f.id,
-              empresa_id: empresaId,
-              tipo: 'pagar',
-              origem: 'frete_cte',
-              categoria: 'frete_motorista',
-              categoria_nome: 'Frete de Terceiro / Motorista',
-              descricao: descFreteiro,
-              pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
-              numero_cte: f.numero_cte,
-              numero_cte_2: f.numero_cte_2,
-              valor_cte_1: v1,
-              valor_cte_2: v2,
-              cliente_nome: f.cliente_nome,
-              cliente_nome_2: f.cliente_nome_2,
-              motorista_nome: f.motorista_nome,
-              favorecido_freteiro_nome: f.favorecido_freteiro_nome,
-              valor: valorTotalFreteiro,
-              valor_pago: isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro,
-              data_emissao: dataEmissaoVal,
-              data_vencimento: dataEmissaoVal,
-              status: isQuitadoFreteiro ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
-              forma_pagamento: 'PIX',
-              is_frete: true,
-              is_triangular: isTriangular
-            });
+            if (temComplementoPorFora) {
+              // 2.2.A Parcela 1: Freteiro coberto pelo CT-e Fiscal
+              const pagoCte = Math.min(valorPagoFreteiro, valorFiscalCte);
+              const quitadoCte = isQuitadoFreteiro || pagoCte >= valorFiscalCte - 0.01;
+
+              titulos.push({
+                id: `frete_pag_${f.id}`,
+                frete_id: f.id,
+                empresa_id: empresaId,
+                tipo: 'pagar',
+                origem: 'frete_cte',
+                categoria: 'frete_motorista',
+                categoria_nome: 'Frete Terceiro (Valor do CT-e)',
+                descricao: `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t) [Fiscal]`,
+                pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                numero_cte: f.numero_cte,
+                numero_cte_2: f.numero_cte_2,
+                valor_cte_1: v1,
+                valor_cte_2: v2,
+                cliente_nome: f.cliente_nome,
+                cliente_nome_2: f.cliente_nome_2,
+                motorista_nome: f.motorista_nome,
+                favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                valor: valorFiscalCte,
+                valor_pago: quitadoCte ? valorFiscalCte : pagoCte,
+                data_emissao: dataEmissaoVal,
+                data_vencimento: dataEmissaoVal,
+                status: quitadoCte ? 'pago' : (pagoCte > 0 ? 'parcial' : 'pendente'),
+                forma_pagamento: 'PIX',
+                is_frete: true,
+                is_triangular: isTriangular
+              });
+
+              // 2.2.B Parcela 2: Pagamento Complementar ("Por Fora")
+              const pagoComp = Math.max(0, Number((valorPagoFreteiro - valorFiscalCte).toFixed(2)));
+              const quitadoComp = isQuitadoFreteiro || pagoComp >= valorComplementoPorFora - 0.01;
+
+              titulos.push({
+                id: `frete_pag_comp_${f.id}`,
+                frete_id: f.id,
+                empresa_id: empresaId,
+                tipo: 'pagar',
+                origem: 'frete_cte',
+                categoria: 'frete_complemento',
+                categoria_nome: 'Frete Complementar ("Por Fora")',
+                descricao: `Frete Por Fora - CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • Placa: ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t)`,
+                pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                numero_cte: f.numero_cte,
+                numero_cte_2: f.numero_cte_2,
+                valor_cte_1: v1,
+                valor_cte_2: v2,
+                cliente_nome: f.cliente_nome,
+                cliente_nome_2: f.cliente_nome_2,
+                motorista_nome: f.motorista_nome,
+                favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                valor: valorComplementoPorFora,
+                valor_pago: quitadoComp ? valorComplementoPorFora : pagoComp,
+                data_emissao: dataEmissaoVal,
+                data_vencimento: dataEmissaoVal,
+                status: quitadoComp ? 'pago' : (pagoComp > 0 ? 'parcial' : 'pendente'),
+                forma_pagamento: 'PIX',
+                is_frete: true,
+                is_triangular: isTriangular
+              });
+            } else {
+              // Sem complemento: Linha única de Freteiro
+              const descFreteiro = isTriangular && f.numero_cte_2
+                ? `Freteiro CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2} (${f.placa_veiculo || 'S/N'})`
+                : `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.placa_veiculo || 'S/N'})`;
+
+              titulos.push({
+                id: `frete_pag_${f.id}`,
+                frete_id: f.id,
+                empresa_id: empresaId,
+                tipo: 'pagar',
+                origem: 'frete_cte',
+                categoria: 'frete_motorista',
+                categoria_nome: 'Frete de Terceiro / Motorista',
+                descricao: descFreteiro,
+                pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                numero_cte: f.numero_cte,
+                numero_cte_2: f.numero_cte_2,
+                valor_cte_1: v1,
+                valor_cte_2: v2,
+                cliente_nome: f.cliente_nome,
+                cliente_nome_2: f.cliente_nome_2,
+                motorista_nome: f.motorista_nome,
+                favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                valor: valorTotalFreteiro,
+                valor_pago: isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro,
+                data_emissao: dataEmissaoVal,
+                data_vencimento: dataEmissaoVal,
+                status: isQuitadoFreteiro ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
+                forma_pagamento: 'PIX',
+                is_frete: true,
+                is_triangular: isTriangular
+              });
+            }
 
             // 2.3 Contas a Pagar: Comissão (se modalidade gestao_pagamentos ou destinatario_comissao_nome preenchido)
             if (Number(f.valor_comissao || 0) > 0 && (f.tipo_operacao === 'gestao_pagamentos' || f.destinatario_comissao_nome)) {
@@ -712,9 +780,9 @@ const baixarTitulo = (req, res) => {
       return res.json({ message: 'Comissão de agenciamento marcada como quitada com sucesso!' });
     }
 
-    // 3. Frete Freteiro a Pagar (frete_pag_15)
+    // 3. Frete Freteiro a Pagar (frete_pag_15 ou frete_pag_comp_15)
     if (String(id).startsWith('frete_pag_')) {
-      const freteId = Number(id.replace('frete_pag_', ''));
+      const freteId = Number(id.replace('frete_pag_comp_', '').replace('frete_pag_', ''));
       if (!freteId || isNaN(freteId)) return res.status(400).json({ error: 'ID de frete inválido.' });
       const frete = db.prepare('SELECT * FROM fretes WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(freteId, empIdNum, empIdStr);
       if (!frete) return res.status(404).json({ error: 'Frete não encontrado.' });

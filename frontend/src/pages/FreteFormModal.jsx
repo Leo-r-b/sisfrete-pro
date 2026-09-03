@@ -460,8 +460,11 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
       const munFim = cleanXml.match(/<xMunFim>([^<]+)<\/xMunFim>/i);
       const ufFim = cleanXml.match(/<UFFim>([^<]+)<\/UFFim>/i);
 
+      const pesoLMatch = cleanXml.match(/<pesoL>([\d\.]+)<\/pesoL>/i);
+      const rxLiq = cleanXml.match(/<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>[\s\S]*?<qCarga>([\d\.]+)<\/qCarga>/i) ||
+                    cleanXml.match(/<qCarga>([\d\.]+)<\/qCarga>[\s\S]*?<tpMed>[^<]*(?:LIQ|LIQUIDO)[^<]*<\/tpMed>/i);
       const qCarga = cleanXml.match(/<qCarga>([\d\.]+)<\/qCarga>/i) || cleanXml.match(/<pesoB>([\d\.]+)<\/pesoB>/i);
-      const pesoKg = qCarga ? parseFloat(qCarga[1]) : 0;
+      const pesoKg = pesoLMatch ? parseFloat(pesoLMatch[1]) : (rxLiq ? parseFloat(rxLiq[1]) : (qCarga ? parseFloat(qCarga[1]) : 0));
 
       const vTPrest = cleanXml.match(/<vTPrest>([\d\.]+)<\/vTPrest>/i) || cleanXml.match(/<vRec>([\d\.]+)<\/vRec>/i) || cleanXml.match(/<vNF>([\d\.]+)<\/vNF>/i) || cleanXml.match(/<vCarga>([\d\.]+)<\/vCarga>/i);
       const valorFrete = vTPrest ? parseFloat(vTPrest[1]) : 0;
@@ -1365,24 +1368,28 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
                 const somaRateio = Number((valorFreteReal + valorComissaoAgenciamento + valorRepasseAgenciamento).toFixed(2));
                 const diferenca = Number((valorVendaTotal - somaRateio).toFixed(2));
                 const isEquilibrado = Math.abs(diferenca) < 0.01 && valorVendaTotal > 0;
+                const isFreteMaiorCte = diferenca < -0.01 && valorVendaTotal > 0;
+                const valorPorFora = Math.abs(diferenca);
 
                 return (
-                  <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                  <div className={`p-3.5 rounded-xl border text-xs space-y-2.5 ${
                     isEquilibrado
                       ? 'bg-slate-950/90 border-emerald-500/40 text-slate-300'
+                      : isFreteMaiorCte
+                      ? 'bg-blue-950/30 border-blue-500/50 text-blue-200'
                       : 'bg-amber-950/20 border-amber-500/40 text-amber-200'
                   }`}>
-                    <div className="flex items-center justify-between font-semibold">
+                    <div className="flex items-center justify-between font-semibold flex-wrap gap-2">
                       <span className="flex items-center gap-1.5">
-                        <ShieldCheck className={`h-4 w-4 ${isEquilibrado ? 'text-emerald-400' : 'text-amber-400'}`} />
-                        <span>Conferência de Rateio e Fechamento</span>
+                        <ShieldCheck className={`h-4 w-4 ${isEquilibrado ? 'text-emerald-400' : isFreteMaiorCte ? 'text-blue-400' : 'text-amber-400'}`} />
+                        <span>{isFreteMaiorCte ? 'Conferência: Frete Declarado Superior ao CT-e' : 'Conferência de Rateio e Fechamento'}</span>
                       </span>
                       <span className="font-mono text-xs font-bold text-white">
                         Soma Rateada: {formatMoney(somaRateio)} / Total CT-e: {formatMoney(valorVendaTotal)}
                       </span>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-slate-900 font-mono text-xs flex items-center justify-center gap-2 flex-wrap">
+                    <div className="p-2.5 rounded-lg bg-slate-900 font-mono text-xs flex items-center justify-center gap-2 flex-wrap">
                       <span className="text-emerald-400 font-bold">
                         Freteiro ({formData.favorecido_freteiro_nome || formData.motorista_nome || 'Freteiro'}): {formatMoney(valorFreteReal)}
                       </span>
@@ -1408,19 +1415,40 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
                       </span>
                     </div>
 
-                    <div className="text-center text-[11px]">
-                      {isEquilibrado ? (
-                        <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span>Rateio 100% Equilibrado! Os 3 pagamentos cobrem exatamente o valor do CT-e.</span>
-                        </span>
-                      ) : (
-                        <span className="text-amber-400 font-bold flex items-center justify-center gap-1">
-                          <AlertCircle className="h-3.5 w-3.5" />
-                          <span>Atenção: Diferença de {formatMoney(Math.abs(diferenca))} {diferenca > 0 ? 'sobrando no CT-e' : 'excedendo o CT-e'}.</span>
-                        </span>
-                      )}
-                    </div>
+                    {isFreteMaiorCte ? (
+                      <div className="p-2.5 rounded-lg bg-slate-950/80 border border-blue-500/30 space-y-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">📄 Coberto pelo CT-e Fiscal:</span>
+                          <span className="font-mono font-bold text-white">{formatMoney(valorVendaTotal)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-amber-300 font-semibold pt-1 border-t border-slate-800">
+                          <span className="flex items-center gap-1.5">
+                            <span>💼 Parcela Complementar ("Por Fora"):</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
+                              Gerado no Financeiro
+                            </span>
+                          </span>
+                          <span className="font-mono font-bold text-amber-400">+{formatMoney(valorPorFora)}</span>
+                        </div>
+                        <p className="text-[10px] text-blue-300 pt-1 border-t border-slate-800/80 leading-relaxed">
+                          💡 <strong>Vinculação Financeira Automática:</strong> O financeiro gerará 1 Contas a Receber ({formatMoney(valorVendaTotal)}) do cliente e dividirá o pagamento do motorista em: Parcela Fiscal CT-e ({formatMoney(valorVendaTotal)}) + Parcela "Por Fora" ({formatMoney(valorPorFora)}) com CT-e, placa e peso informados.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-center text-[11px]">
+                        {isEquilibrado ? (
+                          <span className="text-emerald-400 font-bold flex items-center justify-center gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Rateio 100% Equilibrado! Os pagamentos cobrem exatamente o valor do CT-e.</span>
+                          </span>
+                        ) : (
+                          <span className="text-amber-400 font-bold flex items-center justify-center gap-1">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            <span>Atenção: Sobra de {formatMoney(Math.abs(diferenca))} no CT-e a ser rateada.</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
