@@ -43,7 +43,7 @@ export default function Login() {
       <div className="absolute bottom-10 right-10 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
-        
+
         {/* Brand Header */}
         <div className="text-center mb-6">
           <div className="inline-flex h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-400 items-center justify-center shadow-xl shadow-blue-500/25 mb-4 transform hover:scale-105 transition">
@@ -59,7 +59,7 @@ export default function Login() {
 
         {/* Login Card */}
         <div className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
-          
+
           <div className="mb-5">
             <h2 className="text-xl font-bold text-white font-heading">Acesso à Plataforma</h2>
             <p className="text-xs text-slate-400 mt-1">Informe suas credenciais para acessar o sistema.</p>
@@ -73,7 +73,7 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            
+
             {/* ID DA EMPRESA / NÚMERO DA LICENÇA (OPCIONAL) */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -92,7 +92,7 @@ export default function Login() {
                   type="text"
                   value={licencaId}
                   onChange={(e) => setLicencaId(e.target.value)}
-                  placeholder="Ex: 1, 9, 4 (ou deixe em branco para Ghost Master)"
+                  placeholder="Digite o número da licença"
                   className="w-full bg-slate-950/90 border border-slate-700 hover:border-blue-500/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition font-mono font-bold tracking-wider"
                 />
               </div>
