@@ -399,7 +399,7 @@ ${docSection}
                 <th className="px-2.5 py-2.5 text-right">Valor Total Bruto</th>
                 <th className="px-2.5 py-2.5 text-right">Fechamento (Custo / Lucro)</th>
                 <th className="px-2 py-2.5 text-center">Status</th>
-                <th className="px-2 py-2.5 text-center w-[200px] min-w-[200px]">Ações</th>
+                <th className="px-2 py-2.5 text-center w-[140px]">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -588,7 +588,7 @@ ${docSection}
                       </td>
 
                       {/* 8. Ações Completas (Ultra Compacto & 100% Horizontal) */}
-                      <td className="px-2 py-2 text-center w-[200px] min-w-[200px] whitespace-nowrap">
+                      <td className="px-2 py-2 text-center w-[140px] whitespace-nowrap">
                         <div className="flex items-center justify-center gap-0.5 flex-nowrap">
                           
                           {/* Resumo */}

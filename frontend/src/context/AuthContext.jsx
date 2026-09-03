@@ -41,28 +41,27 @@ export function AuthProvider({ children }) {
         setMetodologiaAtivaState(modo);
         localStorage.setItem('sisfrete_metodologia', modo);
       } else {
-        // Administrador normal e operadores carregam EXCLUSIVAMENTE os dados da sua própria licença
-        const emp = activeUser?.empresa;
-        if (emp) {
-          setActiveEmpresa(emp);
-          setEmpresas([emp]);
-          localStorage.setItem('sisfrete_active_empresa_id', emp.id);
-          const modo = (emp.modo_operacao === 'agenciamento_repasse' || emp.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
-          setMetodologiaAtivaState(modo);
-          localStorage.setItem('sisfrete_metodologia', modo);
-        } else {
-          try {
-            const res = await api.get('/empresa');
-            if (res.data) {
-              setActiveEmpresa(res.data);
-              setEmpresas([res.data]);
-              localStorage.setItem('sisfrete_active_empresa_id', res.data.id);
-              const modo = (res.data.modo_operacao === 'agenciamento_repasse' || res.data.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
-              setMetodologiaAtivaState(modo);
-              localStorage.setItem('sisfrete_metodologia', modo);
-            }
-          } catch (e) {
-            console.warn('Fallback empresa info:', e);
+        // Administrador normal e operadores carregam SEMPRE os dados atualizados da sua licença
+        try {
+          const res = await api.get('/empresa');
+          if (res.data) {
+            const emp = res.data;
+            setActiveEmpresa(emp);
+            setEmpresas([emp]);
+            localStorage.setItem('sisfrete_active_empresa_id', emp.id);
+            const modo = (emp.modo_operacao === 'agenciamento_repasse' || emp.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
+            setMetodologiaAtivaState(modo);
+            localStorage.setItem('sisfrete_metodologia', modo);
+          }
+        } catch (e) {
+          const emp = activeUser?.empresa;
+          if (emp) {
+            setActiveEmpresa(emp);
+            setEmpresas([emp]);
+            localStorage.setItem('sisfrete_active_empresa_id', emp.id);
+            const modo = (emp.modo_operacao === 'agenciamento_repasse' || emp.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
+            setMetodologiaAtivaState(modo);
+            localStorage.setItem('sisfrete_metodologia', modo);
           }
         }
       }

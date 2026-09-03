@@ -30,6 +30,17 @@ function MainApp() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sisfrete_sidebar_collapsed') === 'true';
+  });
+
+  const handleToggleSidebarCollapse = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sisfrete_sidebar_collapsed', next ? 'true' : 'false');
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (user) {
@@ -184,12 +195,14 @@ function MainApp() {
         onOpenCalculadora={() => setIsCalculadoraOpen(true)}
         isMobileOpen={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={handleToggleSidebarCollapse}
       />
 
       {/* Área Principal de Conteúdo */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* Navbar com botão Mobile */}
+        {/* Navbar com botão Mobile e Desktop Collapse */}
         <Navbar
           title={title}
           subtitle={subtitle}
@@ -197,6 +210,8 @@ function MainApp() {
           isRefreshing={isRefreshing}
           onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
           onOpenCalculadora={() => setIsCalculadoraOpen(true)}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={handleToggleSidebarCollapse}
         />
 
         {/* Conteúdo Dinâmico com Scroll */}

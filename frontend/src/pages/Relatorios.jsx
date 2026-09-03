@@ -334,7 +334,7 @@ ${viagensTxt}
   };
 
   return (
-    <div className="p-3 sm:p-6 space-y-5 max-w-7xl mx-auto print:p-0 print:max-w-full print:space-y-2">
+    <div className="p-3 sm:p-6 space-y-5 w-full max-w-[1700px] mx-auto print:p-0 print:max-w-full print:space-y-2">
       
       {/* Header na Tela (Oculto na Impressão) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">

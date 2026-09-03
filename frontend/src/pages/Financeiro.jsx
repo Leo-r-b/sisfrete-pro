@@ -400,7 +400,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
   };
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 w-full max-w-[1700px] mx-auto">
       
       {/* Header Financeiro com Ações Rápidas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -659,13 +659,13 @@ _Favor enviar o comprovante de pagamento após a transferência._
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-800/80 uppercase text-[10px] font-bold text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="px-4 py-3">Descrição / Título</th>
-                  <th className="px-4 py-3">Categoria (Plano de Contas)</th>
-                  <th className="px-4 py-3">Favorecido / Fornecedor / Tomador</th>
-                  <th className="px-4 py-3">Vencimento</th>
-                  <th className="px-4 py-3 text-right">Valor Total / Pago</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  <th className="px-4 py-3 text-center">Ações</th>
+                  <th className="px-3 py-2.5">Descrição / Título</th>
+                  <th className="px-3 py-2.5">Categoria (Plano de Contas)</th>
+                  <th className="px-3 py-2.5">Favorecido / Tomador</th>
+                  <th className="px-3 py-2.5">Vencimento</th>
+                  <th className="px-3 py-2.5 text-right">Valor Total / Pago</th>
+                  <th className="px-3 py-2.5 text-center">Status</th>
+                  <th className="px-3 py-2.5 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -693,7 +693,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                       <tr key={t.id} className="hover:bg-slate-800/40 transition">
                         
                         {/* Descrição & Origem */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           {t.is_triangular ? (
                             <div className="space-y-1">
                               <div className="p-1 rounded bg-indigo-950/40 border border-indigo-500/30 text-[10px]">
@@ -712,7 +712,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                             </div>
                           ) : (
                             <div>
-                              <p className="font-bold text-white text-xs">{t.descricao}</p>
+                              <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>{t.descricao}</p>
                               <span className="text-[10px] text-slate-400">
                                 {t.is_frete ? '🚚 Vinculado a Frete' : '🏢 Despesa / Título Avulso'}
                               </span>
@@ -721,20 +721,20 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                         {/* Categoria */}
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           {getCategoriaBadge(t.categoria, t.categoria_nome)}
                         </td>
 
                         {/* Pessoa / Fornecedor / Tomador */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-2.5">
                           {t.tipo === 'receber' && t.is_triangular ? (
                             <div className="space-y-0.5 text-[11px]">
-                              <p className="font-medium text-indigo-200 truncate max-w-[170px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
-                              <p className="font-medium text-purple-200 truncate max-w-[170px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
+                              <p className="font-medium text-indigo-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
+                              <p className="font-medium text-purple-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
                             </div>
                           ) : (
                             <div>
-                              <p className="font-medium text-slate-200 truncate max-w-[180px]">{t.pessoa_nome || '-'}</p>
+                              <p className="font-medium text-slate-200 truncate max-w-[160px] lg:max-w-[220px]" title={t.pessoa_nome}>{t.pessoa_nome || '-'}</p>
                               {t.forma_pagamento && (
                                 <p className="text-[10px] text-slate-400 font-mono">{t.forma_pagamento}</p>
                               )}
@@ -743,7 +743,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                         {/* Vencimento */}
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-3 py-2.5 whitespace-nowrap">
                           <p className={`font-semibold font-mono ${isVencido ? 'text-rose-400' : 'text-slate-300'}`}>
                             {t.data_vencimento ? new Date(t.data_vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
                           </p>
@@ -751,7 +751,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                         {/* Valor */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap font-mono">
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
                           <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {formatMoney(valorTotal)}
                           </span>
@@ -769,7 +769,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                         {/* Status */}
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-center whitespace-nowrap">
                           {isQuitado ? (
                             <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
                               <CheckCircle2 className="h-3 w-3" />
@@ -789,7 +789,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                         {/* Ações Rápidas: Baixar, WhatsApp, Boleto, Recibo, Excluir */}
-                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             
                             {/* Botão de Baixa */}

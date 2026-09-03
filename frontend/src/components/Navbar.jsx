@@ -1,8 +1,17 @@
 import React from 'react';
-import { Search, Bell, Sparkles, RefreshCw, Menu, Building2, ChevronDown, Calculator } from 'lucide-react';
+import { Search, Bell, Sparkles, RefreshCw, Menu, Building2, ChevronDown, Calculator, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export default function Navbar({ onRefresh, isRefreshing, title, subtitle, onOpenMobileMenu, onOpenCalculadora }) {
+export default function Navbar({ 
+  onRefresh, 
+  isRefreshing, 
+  title, 
+  subtitle, 
+  onOpenMobileMenu, 
+  onOpenCalculadora,
+  isCollapsed = false,
+  onToggleCollapse
+}) {
   const { user, empresas, activeEmpresa, switchEmpresa, metodologiaAtiva, setMetodologiaAtiva } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -17,6 +26,17 @@ export default function Navbar({ onRefresh, isRefreshing, title, subtitle, onOpe
         >
           <Menu className="h-5 w-5" />
         </button>
+
+        {/* Botão de Recolher/Expandir Menu no Desktop */}
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className="hidden md:flex p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 shadow-sm transition items-center justify-center cursor-pointer"
+            title={isCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral (Mais espaço para tabelas)'}
+          >
+            {isCollapsed ? <PanelLeftOpen className="h-4 w-4 text-purple-400" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
+        )}
 
         <div>
           <h2 className="text-sm sm:text-lg font-bold text-white font-heading truncate max-w-[160px] sm:max-w-none">

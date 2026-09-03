@@ -83,12 +83,7 @@ const login = async (req, res) => {
 
     if (rawLicenca) {
       // 2.1 Se informou licença, busca a empresa correspondente
-      empresa = db.prepare(`
-        SELECT id, codigo_licenca, limite_logins, modo_operacao, percentual_comissao_padrao,
-               razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf, ativo
-        FROM empresas
-        WHERE codigo_licenca = ? OR CAST(id AS TEXT) = ?
-      `).get(rawLicenca, rawLicenca);
+      empresa = db.prepare(`SELECT * FROM empresas WHERE codigo_licenca = ? OR CAST(id AS TEXT) = ?`).get(rawLicenca, rawLicenca);
 
       if (empresa) {
         user = db.prepare('SELECT * FROM users WHERE (LOWER(email) = ? OR LOWER(name) = ?) AND empresa_id = ?').get(term, term, empresa.id);
@@ -99,12 +94,7 @@ const login = async (req, res) => {
     if (!user) {
       user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(name) = ?').get(term, term);
       if (user && user.empresa_id) {
-        empresa = db.prepare(`
-          SELECT id, codigo_licenca, limite_logins, modo_operacao, percentual_comissao_padrao,
-                 razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf, ativo
-          FROM empresas
-          WHERE id = ?
-        `).get(user.empresa_id);
+        empresa = db.prepare(`SELECT * FROM empresas WHERE id = ?`).get(user.empresa_id);
       }
     }
 
@@ -172,6 +162,7 @@ const login = async (req, res) => {
         tipo_licenca: empresa?.tipo_licenca || 'paga',
         data_expiracao_teste: empresa?.data_expiracao_teste || null,
         valor_mensalidade: empresa?.valor_mensalidade !== undefined ? Number(empresa.valor_mensalidade) : 350.00,
+        modulos_ativos: empresa?.modulos_ativos || null,
         empresa: empresa,
       },
     });
@@ -191,7 +182,7 @@ const getProfile = async (req, res) => {
 
     let empresa = null;
     if (user.empresa_id) {
-      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, modulos_ativos, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(user.empresa_id);
+      empresa = db.prepare('SELECT * FROM empresas WHERE id = ?').get(user.empresa_id);
     }
 
     return res.json({
@@ -254,7 +245,7 @@ const updateProfile = async (req, res) => {
     
     let empresa = null;
     if (updatedUser.empresa_id) {
-      empresa = db.prepare('SELECT id, codigo_licenca, modo_operacao, percentual_comissao_padrao, modulos_ativos, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf FROM empresas WHERE id = ?').get(updatedUser.empresa_id);
+      empresa = db.prepare('SELECT * FROM empresas WHERE id = ?').get(updatedUser.empresa_id);
     }
 
     const newToken = generateToken(updatedUser);
