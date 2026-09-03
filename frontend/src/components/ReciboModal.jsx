@@ -14,7 +14,8 @@ import {
   TrendingUp,
   Building2,
   DollarSign,
-  Scale
+  Scale,
+  Truck
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import api from '../services/api';
@@ -46,6 +47,7 @@ export default function ReciboModal({ frete, isOpen, onClose }) {
   useEffect(() => {
     if (isOpen && frete) {
       setFullFrete(frete);
+      setVisaoRecibo(frete.tipo === 'receber' ? 'empresa' : 'motorista');
       const targetId = frete.frete_id || frete.id;
       if (targetId && (!frete.origem_cidade || !frete.motorista_nome || frete.valor_frete_compra === undefined)) {
         setLoadingFrete(true);
@@ -132,6 +134,29 @@ ${cteDetails}
 📌 *Status do Recebimento:* ${isQuitadoCliente ? 'QUITADO / RECEBIDO ✅' : 'PENDENTE DE LIQUIDAÇÃO ⏳'}
 ---------------------------------------
 *${razaoSocial}*`;
+    }
+
+    // 2. Mensagem para Visão Empresa (Custo & Rateio)
+    if (visaoRecibo === 'empresa') {
+      let cteDetails = `📋 *CT-e Nº:* ${f.numero_cte || 'S/N'} (${formatMoney(totalCte)})`;
+      if (isTriangular) {
+        cteDetails = `📋 *CT-e 1:* Nº ${f.numero_cte || 'S/N'} - ${formatMoney(v1)}
+📋 *CT-e 2:* Nº ${f.numero_cte_2 || 'S/N'} - ${formatMoney(v2)}
+💰 *Total CT-es Fiscais:* ${formatMoney(totalCte)}`;
+      }
+
+      return `🏢 *DEMONSTRATIVO DE CUSTOS & RATEIO (VISÃO EMPRESA)*
+---------------------------------------
+${cteDetails}
+📍 *Trajeto:* ${f.origem_cidade || '-'}/${f.origem_uf || '-'} ➔ ${f.destino_cidade || '-'}/${f.destino_uf || '-'}
+🚛 *Veículo:* ${f.placa_veiculo || 'N/I'} | Motorista: ${f.motorista_nome || 'N/I'}
+
+💵 *DISCRIMINAÇÃO DOS CUSTOS:*
+• *Parcela Fiscal CT-e:* ${formatMoney(totalCte)}
+${freteReal > totalCte ? `• *Complemento Por Fora:* ${formatMoney(freteReal - totalCte)}\n` : ''}${valorComissao > 0 ? `• *Comissão Agência:* ${formatMoney(valorComissao)}\n` : ''}${valorRepasse > 0 ? `• *Repasse Parceiro:* ${formatMoney(valorRepasse)}\n` : ''}---------------------------------------
+💰 *CUSTO TOTAL OPERAÇÃO: ${formatMoney(Math.max(totalCte, freteReal) + valorComissao + valorRepasse)}*
+---------------------------------------
+*${nomeFantasia || razaoSocial}*`;
     }
 
     // 2. Mensagem de Recibo de Gestão de Pagamentos / Agenciamento
