@@ -4,8 +4,8 @@
   "description": "Backend API para SisFrete Pro - Gestão de Fretes e Subcontratação",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node --experimental-sqlite src/server.js",
+    "dev": "node --experimental-sqlite --watch src/server.js",
     "db:push:turso": "node scripts/turso-migrate.js"
   },
   "engines": {

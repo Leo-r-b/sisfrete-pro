@@ -6,7 +6,7 @@
   },
   "scripts": {
     "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
-    "start": "node backend/src/server.js"
+    "start": "node --experimental-sqlite backend/src/server.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
