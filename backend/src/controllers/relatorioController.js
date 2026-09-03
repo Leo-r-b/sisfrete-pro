@@ -17,7 +17,7 @@ const getRelatorioMotoristas = (req, res) => {
         MAX(f.placa_carreta) as placa_carreta,
         COUNT(f.id) as total_viagens,
         COALESCE(SUM(f.peso_kg), 0) / 1000.0 as total_peso_ton,
-        COALESCE(SUM(f.valor_frete_compra), 0) as total_frete_contratado,
+        COALESCE(SUM(CASE WHEN f.valor_frete_real > 0 THEN f.valor_frete_real ELSE COALESCE(f.valor_frete_compra, 0) END), 0) as total_frete_contratado,
         COALESCE(SUM(f.valor_adiantamento), 0) as total_adiantamentos_previstos,
         COALESCE(SUM(
           (SELECT COALESCE(SUM(valor), 0) FROM adiantamentos_historico WHERE frete_id = f.id)
@@ -162,7 +162,7 @@ const getExtratoMotorista = (req, res) => {
 
     // Recalcular rigorosamente cada frete individual
     const fretes = fretesRaw.map((f) => {
-      const contratado = Number((f.valor_frete_compra || 0).toFixed(2));
+      const contratado = Number((f.valor_frete_real > 0 ? f.valor_frete_real : (f.valor_frete_compra || 0)).toFixed(2));
       const pago = Number((f.total_ja_pago || 0).toFixed(2));
       const saldo = Math.max(0, Number((contratado - pago).toFixed(2)));
       let status = 'pendente';
@@ -447,7 +447,7 @@ const getRelatorioFinanceiro = (req, res) => {
     const fretesRaw = db.prepare(query).all(...params);
 
     const fretes = fretesRaw.map((f) => {
-      const contratado = Number((f.valor_frete_compra || 0).toFixed(2));
+      const contratado = Number((f.valor_frete_real > 0 ? f.valor_frete_real : (f.valor_frete_compra || 0)).toFixed(2));
       const pago = Number((f.total_ja_pago || 0).toFixed(2));
       const saldo = Math.max(0, Number((contratado - pago).toFixed(2)));
       let status = 'pendente';
@@ -1096,6 +1096,132 @@ const getRelatorioFinanceiroFluxo = (req, res) => {
   }
 };
 
+/**
+ * 10. Relatório Analítico de Contas Pagas e Baixas Realizadas
+ */
+const getRelatorioContasPagas = (req, res) => {
+  try {
+    const empresaId = req.empresaId || req.user?.empresa_id || 1;
+    const empIdNum = Number(empresaId);
+    const empIdStr = String(empresaId);
+    const { search, data_inicio, data_fim, forma_pagamento, tipo = 'todos' } = req.query;
+
+    let query = `
+      SELECT 
+        b.id,
+        b.data_pagamento,
+        b.valor,
+        b.forma_pagamento,
+        b.comprovante_ref,
+        b.observacoes,
+        b.tipo_titulo,
+        b.tipo_parcela,
+        b.created_at,
+        t.descricao as titulo_descricao,
+        t.pessoa_nome as titulo_pessoa,
+        t.categoria_nome as titulo_categoria,
+        f.numero_cte,
+        f.cliente_nome,
+        f.motorista_nome,
+        f.favorecido_freteiro_nome,
+        f.placa_veiculo,
+        f.peso_kg
+      FROM financeiro_baixas_historico b
+      LEFT JOIN financeiro_titulos t ON b.titulo_id = t.id
+      LEFT JOIN fretes f ON b.frete_id = f.id
+      WHERE (b.empresa_id = ? OR b.empresa_id = ?)
+    `;
+
+    const params = [empIdNum, empIdStr];
+
+    if (tipo !== 'todos') {
+      query += ` AND b.tipo_titulo = ?`;
+      params.push(tipo);
+    }
+
+    if (forma_pagamento && forma_pagamento !== 'todos') {
+      query += ` AND b.forma_pagamento = ?`;
+      params.push(forma_pagamento);
+    }
+
+    if (data_inicio) {
+      query += ` AND b.data_pagamento >= ?`;
+      params.push(data_inicio);
+    }
+
+    if (data_fim) {
+      query += ` AND b.data_pagamento <= ?`;
+      params.push(data_fim);
+    }
+
+    query += ` ORDER BY b.data_pagamento DESC, b.id DESC`;
+
+    const rows = db.prepare(query).all(...params);
+
+    let baixas = rows.map(r => {
+      const favorecido = r.titulo_pessoa || r.favorecido_freteiro_nome || r.motorista_nome || r.cliente_nome || '-';
+      let descricao = r.titulo_descricao;
+      if (!descricao) {
+        if (r.tipo_parcela === 'por_fora') {
+          descricao = `Frete Por Fora - CT-e Nº ${r.numero_cte || 'S/N'}`;
+        } else if (r.tipo_parcela === 'fiscal') {
+          descricao = `Frete Fiscal CT-e Nº ${r.numero_cte || 'S/N'}`;
+        } else if (r.tipo_parcela === 'repasse') {
+          descricao = `Repasse Agenciamento CT-e Nº ${r.numero_cte || 'S/N'}`;
+        } else if (r.tipo_parcela === 'comissao') {
+          descricao = `Comissão Agenciamento CT-e Nº ${r.numero_cte || 'S/N'}`;
+        } else if (r.numero_cte) {
+          descricao = `Frete CT-e Nº ${r.numero_cte}`;
+        } else {
+          descricao = 'Lançamento Operacional';
+        }
+      }
+
+      return {
+        id: r.id,
+        data_pagamento: r.data_pagamento,
+        valor: Number(r.valor || 0),
+        forma_pagamento: r.forma_pagamento || 'PIX',
+        comprovante_ref: r.comprovante_ref || '',
+        observacoes: r.observacoes || '',
+        tipo_titulo: r.tipo_titulo,
+        tipo_parcela: r.tipo_parcela,
+        descricao,
+        favorecido,
+        numero_cte: r.numero_cte || '',
+        placa_veiculo: r.placa_veiculo || '',
+        peso_ton: r.peso_kg ? Number((r.peso_kg / 1000).toFixed(2)) : null
+      };
+    });
+
+    if (search) {
+      const q = search.toLowerCase().trim();
+      baixas = baixas.filter(b => 
+        b.descricao.toLowerCase().includes(q) ||
+        b.favorecido.toLowerCase().includes(q) ||
+        b.forma_pagamento.toLowerCase().includes(q) ||
+        b.comprovante_ref.toLowerCase().includes(q) ||
+        (b.numero_cte && b.numero_cte.toLowerCase().includes(q))
+      );
+    }
+
+    const totalPago = baixas.filter(b => b.tipo_titulo === 'pagar').reduce((sum, b) => sum + b.valor, 0);
+    const totalRecebido = baixas.filter(b => b.tipo_titulo === 'receber').reduce((sum, b) => sum + b.valor, 0);
+
+    return res.json({
+      totais: {
+        total_pago: Number(totalPago.toFixed(2)),
+        total_recebido: Number(totalRecebido.toFixed(2)),
+        total_lancamentos: baixas.length,
+      },
+      baixas
+    });
+  } catch (error) {
+    console.error('Erro getRelatorioContasPagas:', error);
+    return res.status(500).json({ error: 'Erro ao gerar relatório de contas pagas: ' + error.message });
+  }
+};
+
 module.exports = {
   getRelatorioMotoristas,
   getExtratoMotorista,
@@ -1106,5 +1232,6 @@ module.exports = {
   getRelatorioCanhotosPod,
   getRelatorioManutencaoFrota,
   getRelatorioFinanceiroFluxo,
+  getRelatorioContasPagas,
 };
 

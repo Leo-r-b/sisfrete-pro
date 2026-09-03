@@ -28,6 +28,7 @@ export default function ReciboModal({ frete, isOpen, onClose }) {
   const [actionFeedback, setActionFeedback] = useState('');
   const [fullFrete, setFullFrete] = useState(frete || {});
   const [loadingFrete, setLoadingFrete] = useState(false);
+  const [visaoRecibo, setVisaoRecibo] = useState(frete?.tipo === 'receber' ? 'empresa' : 'motorista');
   const printRef = useRef();
 
   // Fechar com a tecla ESC
@@ -406,6 +407,39 @@ ${cteHeader}
           </div>
         )}
 
+        {/* Seletor de Visão do Recibo (Diferenciação Empresa vs Motorista) */}
+        {!isRecebimentoCliente && (
+          <div className="no-print flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 bg-slate-850 border-b border-slate-800 text-xs">
+            <span className="font-semibold text-slate-300">Modo de Exibição do Recibo:</span>
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-750">
+              <button
+                type="button"
+                onClick={() => setVisaoRecibo('motorista')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  visaoRecibo === 'motorista'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-950'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Truck className="h-3.5 w-3.5" />
+                <span>🚚 Visão Motorista</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisaoRecibo('empresa')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  visaoRecibo === 'empresa'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                <span>🏢 Visão Empresa</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Scrollable Receipt Area - FORMATO VERTICAL OTIMIZADO PARA CELULAR (MAX-W 430px) */}
         <div className="overflow-y-auto flex-1 p-2 sm:p-4 bg-slate-950/80 flex justify-center">
 
@@ -633,66 +667,114 @@ ${cteHeader}
                   </tbody>
                 </table>
               </div>
-            ) : isAgenciamento ? (
+            ) : visaoRecibo === 'empresa' ? (
               /* ========================================================= */
-              /* DEMONSTRATIVO FINANCEIRO: AGENCIAMENTO & REPASSE         */
+              /* DEMONSTRATIVO FINANCEIRO: VISÃO EMPRESA (CUSTO & RATEIO)  */
               /* ========================================================= */
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-700 mb-1">
-                  Demonstrativo Financeiro do Agenciamento & Repasse
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-bold uppercase text-slate-800 flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5 text-indigo-700" />
+                    <span>Demonstrativo de Custos & Rateio (Visão Empresa)</span>
+                  </p>
+                  <span className="text-[9px] px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                    Controle Interno
+                  </span>
+                </div>
                 <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[9px] uppercase">
                     <tr>
-                      <th className="p-1.5">Descrição Financeira</th>
+                      <th className="p-1.5">Discriminação de Custo / Rateio</th>
                       <th className="p-1.5 text-right">Valor (R$)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     <tr>
                       <td className="p-1.5 font-semibold text-slate-800">
-                        {isTriangular ? `Total Bruto dos CT-es (${formatMoney(v1)} + ${formatMoney(v2)})` : 'Valor Total Bruto do CT-e'}
+                        1. Parcela Fiscal do CT-e ({isTriangular ? `CT-e 1 Nº ${f.numero_cte} + CT-e 2 Nº ${f.numero_cte_2}` : `CT-e Nº ${f.numero_cte || 'S/N'}`})
                       </td>
                       <td className="p-1.5 text-right font-black text-slate-900">{formatMoney(totalCte)}</td>
                     </tr>
-                    <tr className="bg-emerald-50/60 text-emerald-950">
-                      <td className="p-1.5 font-bold">1. Valor do Transportador (Frete Real Negociado)</td>
-                      <td className="p-1.5 text-right font-mono font-black text-emerald-800">{formatMoney(freteReal)}</td>
-                    </tr>
-                    <tr className="bg-purple-50/60 text-purple-950">
-                      <td className="p-1.5 font-bold">2. Comissão Retida ({pctComissao}% sobre o Frete Real)</td>
-                      <td className="p-1.5 text-right font-mono font-black text-purple-800">{formatMoney(valorComissao)}</td>
-                    </tr>
-                    <tr className="bg-indigo-900 text-white font-bold text-[11px]">
-                      <td className="p-2">3. VALOR DISPONÍVEL PARA REPASSE</td>
-                      <td className="p-2 text-right text-indigo-200 font-mono text-xs font-black">{formatMoney(valorRepasse)}</td>
+                    {freteReal > totalCte && (
+                      <tr className="bg-amber-50 text-amber-950">
+                        <td className="p-1.5 font-bold">2. Parcela Complementar ("Por Fora")</td>
+                        <td className="p-1.5 text-right font-mono font-black text-amber-800">{formatMoney(freteReal - totalCte)}</td>
+                      </tr>
+                    )}
+                    {valorComissao > 0 && (
+                      <tr className="bg-purple-50 text-purple-950">
+                        <td className="p-1.5 font-bold">3. Comissão de Agenciamento ({f.destinatario_comissao_nome || 'Agência'})</td>
+                        <td className="p-1.5 text-right font-mono font-black text-purple-800">{formatMoney(valorComissao)}</td>
+                      </tr>
+                    )}
+                    {valorRepasse > 0 && (
+                      <tr className="bg-indigo-50 text-indigo-950">
+                        <td className="p-1.5 font-bold">4. Repasse ({f.destinatario_repasse_nome || 'Destinatário'})</td>
+                        <td className="p-1.5 text-right font-mono font-black text-indigo-800">{formatMoney(valorRepasse)}</td>
+                      </tr>
+                    )}
+                    <tr className="bg-slate-900 text-white font-bold text-[11px]">
+                      <td className="p-2 uppercase">CUSTO TOTAL OPERACIONAL</td>
+                      <td className="p-2 text-right text-emerald-300 font-mono text-xs font-black">
+                        {formatMoney(Math.max(totalCte, freteReal) + valorComissao + valorRepasse)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
+
+                {/* Subtabela de Baixas Pagas pela Empresa */}
+                {(f.historico_baixas?.length > 0 || f.adiantamentos_historico?.length > 0) && (
+                  <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
+                    <p className="text-[9px] font-bold text-slate-700 uppercase">
+                      Histórico de Pagamentos Já Efetuados pela Empresa:
+                    </p>
+                    <div className="space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-200 font-mono text-[9.5px]">
+                      {(f.historico_baixas || f.adiantamentos_historico || []).map((bx, i) => (
+                        <div key={i} className="flex items-center justify-between text-slate-700 border-b border-slate-200 last:border-0 pb-0.5">
+                          <span>{bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} • {bx.tipo_parcela === 'por_fora' ? 'Por Fora' : 'Fiscal'} ({bx.forma_pagamento || 'PIX'})</span>
+                          <strong className="text-emerald-700">{formatMoney(bx.valor)}</strong>
+                        </div>
+                      ))}
+                      <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-300 text-[10px]">
+                        <span>Total Pago pela Empresa:</span>
+                        <span className="text-emerald-800">{formatMoney(f.total_ja_pago || (f.historico_baixas || []).reduce((acc, b) => acc + Number(b.valor || 0), 0) || f.valor_adiantamento || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               /* ========================================================= */
-              /* DEMONSTRATIVO FINANCEIRO: MOTORISTA / CONTAS A PAGAR     */
+              /* DEMONSTRATIVO FINANCEIRO: VISÃO MOTORISTA / FRETEIRO      */
               /* ========================================================= */
               <div>
-                <p className="text-[10px] font-bold uppercase text-slate-700 mb-1">
-                  Demonstrativo Financeiro do Motorista (Valor Contratado)
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-bold uppercase text-slate-800 flex items-center gap-1">
+                    <Truck className="h-3.5 w-3.5 text-blue-700" />
+                    <span>Demonstrativo do Freteiro (Valor Contratado)</span>
+                  </p>
+                  <span className="text-[9px] px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold border border-blue-200">
+                    Via do Motorista
+                  </span>
+                </div>
                 <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[9px] uppercase">
                     <tr>
-                      <th className="p-1.5">Descrição</th>
+                      <th className="p-1.5">Discriminação</th>
                       <th className="p-1.5 text-right">Valor (R$)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     <tr>
-                      <td className="p-1.5 font-semibold text-slate-800">Valor Total do Frete Contratado</td>
+                      <td className="p-1.5 font-semibold text-slate-800">
+                        Valor Total do Frete Contratado
+                        {isTriangular && <span className="block text-[8.5px] text-slate-500 font-normal">CT-e 1 Nº {f.numero_cte || 'S/N'} + CT-e 2 Nº {f.numero_cte_2 || 'S/N'}</span>}
+                      </td>
                       <td className="p-1.5 text-right font-bold text-slate-900">{formatMoney(freteReal)}</td>
                     </tr>
                     {f.valor_adiantamento > 0 && (
                       <tr className="text-blue-700 bg-blue-50/50">
-                        <td className="p-1.5">(-) Adiantamento {f.percentual_adiantamento ? `(${f.percentual_adiantamento}%)` : ''}</td>
+                        <td className="p-1.5">(-) Adiantamento Pago</td>
                         <td className="p-1.5 text-right font-semibold">- {formatMoney(f.valor_adiantamento)}</td>
                       </tr>
                     )}
@@ -721,8 +803,8 @@ ${cteHeader}
                       </tr>
                     )}
                     <tr className="bg-slate-900 text-white font-bold text-[11px]">
-                      <td className="p-2">SALDO A PAGAR NA ENTREGA</td>
-                      <td className="p-2 text-right text-emerald-300 font-mono text-xs">{formatMoney(valorSaldoMotorista)}</td>
+                      <td className="p-2">SALDO LÍQUIDO A RECEBER</td>
+                      <td className="p-2 text-right text-emerald-300 font-mono text-xs font-black">{formatMoney(valorSaldoMotorista)}</td>
                     </tr>
                   </tbody>
                 </table>

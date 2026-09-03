@@ -75,6 +75,7 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
   const [relMotoristas, setRelMotoristas] = useState({ totais: {}, motoristas: [] });
   const [relClientes, setRelClientes] = useState({ totais: {}, clientes: [] });
   const [relCanhotos, setRelCanhotos] = useState({ totais: {}, fretes: [] });
+  const [relContasPagas, setRelContasPagas] = useState({ totais: {}, baixas: [] });
 
   // Extrato Individual do Motorista
   const [selectedMotoristaExtrato, setSelectedMotoristaExtrato] = useState(null);
@@ -84,6 +85,33 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
 
   const formatMoney = (val) => {
     return Number(val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+
+  const handleFiltroDataRapido = (tipo) => {
+    const hoje = new Date();
+    const format = (d) => d.toISOString().slice(0, 10);
+
+    if (tipo === 'hoje') {
+      setDataInicio(format(hoje));
+      setDataFim(format(hoje));
+    } else if (tipo === 'semana') {
+      const primeiroDia = new Date(hoje);
+      primeiroDia.setDate(hoje.getDate() - hoje.getDay());
+      setDataInicio(format(primeiroDia));
+      setDataFim(format(hoje));
+    } else if (tipo === 'mes') {
+      const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      setDataInicio(format(primeiroDia));
+      setDataFim(format(hoje));
+    } else if (tipo === 'mes_anterior') {
+      const primeiroDia = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const ultimoDia = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+      setDataInicio(format(primeiroDia));
+      setDataFim(format(ultimoDia));
+    } else if (tipo === 'limpar') {
+      setDataInicio('');
+      setDataFim('');
+    }
   };
 
   // Carregar Dados do Relatório Selecionado
@@ -125,6 +153,9 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
       } else if (activeTab === 'canhotos') {
         const res = await api.get('/relatorios/canhotos-pod', { params });
         setRelCanhotos(res.data || { totais: {}, fretes: [] });
+      } else if (activeTab === 'contas_pagas') {
+        const res = await api.get('/relatorios/contas-pagas', { params });
+        setRelContasPagas(res.data || { totais: {}, baixas: [] });
       }
     } catch (err) {
       console.error('Erro ao carregar relatório:', err);
@@ -241,6 +272,17 @@ export default function Relatorios({ onOpenLancamento, onOpenRecibo }) {
         (c.total_comissao_estimada || 0).toFixed(2).replace('.', ','),
         `${c.margem_percentual || 0}%`
       ]);
+    } else if (activeTab === 'contas_pagas') {
+      headers = ['Data Pagamento', 'Tipo / Parcela', 'Favorecido', 'Descricao / CT-e', 'Forma Pagamento', 'Comprovante / Autenticacao', 'Valor Pago (R$)'];
+      rows = (relContasPagas.baixas || []).map(b => [
+        `"${b.data_pagamento || ''}"`,
+        `"${b.tipo_parcela || ''}"`,
+        `"${b.favorecido || ''}"`,
+        `"${b.descricao || ''}"`,
+        `"${b.forma_pagamento || ''}"`,
+        `"${b.comprovante_ref || ''}"`,
+        (b.valor || 0).toFixed(2).replace('.', ',')
+      ]);
     } else if (activeTab === 'canhotos') {
       headers = ['CT-e', 'Data Emissao', 'Tomador', 'Motorista', 'Placa', 'Status Canhoto POD', 'Data/Hora Entrega', 'Recebedor Nome', 'Doc Recebedor'];
       rows = (relCanhotos.fretes || []).map(f => [
@@ -324,6 +366,7 @@ ${viagensTxt}
     switch (activeTab) {
       case 'repasses': return 'EXTRATO DE REPASSES & COMISSÕES DE AGENCIAMENTO';
       case 'dre': return 'DEMONSTRATIVO DE RESULTADO OPERACIONAL POR VIAGEM (DRE)';
+      case 'contas_pagas': return 'RELATÓRIO ANALÍTICO DE CONTAS PAGAS & BAIXAS PARCIAIS';
       case 'financeiro_fluxo': return 'RELATÓRIO FINANCEIRO CONSOLIDADO & FLUXO DE CAIXA';
       case 'manutencao_frota': return 'RELATÓRIO DE MANUTENÇÃO DA FROTA & CUSTOS DE VEÍCULOS';
       case 'motoristas': return 'EXTRATO CONSOLIDADO DE MOTORISTAS & FRETES';
@@ -501,6 +544,19 @@ ${viagensTxt}
         </button>
 
         <button
+          onClick={() => setActiveTab('contas_pagas')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
+            activeTab === 'contas_pagas'
+              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+          title="Extrato Analítico de Pagamentos e Baixas Parciais"
+        >
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+          <span>Contas Pagas & Baixas</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('canhotos')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
             activeTab === 'canhotos'
@@ -514,36 +570,83 @@ ${viagensTxt}
       </div>
 
       {/* BARRA DE FILTROS (OCULTA NA IMPRESSÃO) */}
-      <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-xs print:hidden">
-        <div className="relative sm:col-span-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por CT-e, motorista, cliente, placa ou descrição..."
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-          />
+      <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5 text-xs print:hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <div className="relative sm:col-span-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por CT-e, motorista, cliente, placa ou descrição..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:border-blue-500 focus:outline-none"
+              placeholder="Data Início"
+            />
+          </div>
+
+          <div>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:border-blue-500 focus:outline-none"
+              placeholder="Data Fim"
+            />
+          </div>
         </div>
 
-        <div>
-          <input
-            type="date"
-            value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:border-blue-500 focus:outline-none"
-            placeholder="Data Início"
-          />
-        </div>
-
-        <div>
-          <input
-            type="date"
-            value={dataFim}
-            onChange={(e) => setDataFim(e.target.value)}
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:border-blue-500 focus:outline-none"
-            placeholder="Data Fim"
-          />
+        {/* Atalhos Rápidos de Data */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800/80 text-[11px]">
+          <span className="text-slate-400 font-semibold mr-1 flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-slate-400" />
+            Período:
+          </span>
+          <button
+            type="button"
+            onClick={() => handleFiltroDataRapido('hoje')}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer"
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFiltroDataRapido('semana')}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer"
+          >
+            Esta Semana
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFiltroDataRapido('mes')}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer"
+          >
+            Este Mês
+          </button>
+          <button
+            type="button"
+            onClick={() => handleFiltroDataRapido('mes_anterior')}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition cursor-pointer"
+          >
+            Mês Anterior
+          </button>
+          {(dataInicio || dataFim) && (
+            <button
+              type="button"
+              onClick={() => handleFiltroDataRapido('limpar')}
+              className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 font-medium transition cursor-pointer border border-rose-500/30 ml-auto"
+            >
+              Limpar Datas
+            </button>
+          )}
         </div>
       </div>
 
@@ -1559,6 +1662,164 @@ ${viagensTxt}
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 8. RELATÓRIO DE CONTAS PAGAS & BAIXAS PARCIAIS ANALÍTICAS               */}
+      {/* ========================================================================= */}
+      {activeTab === 'contas_pagas' && (
+        <div className="space-y-4 print:space-y-1">
+          {/* CARDS RESUMO (OCULTOS NA IMPRESSÃO) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 print:hidden">
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                  Total Pago / Liquidado
+                </span>
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              </div>
+              <strong className="text-xl font-mono font-black text-emerald-400 block">
+                {formatMoney(relContasPagas.totais?.total_pago)}
+              </strong>
+              <span className="text-[10px] text-slate-500 block">
+                {relContasPagas.totais?.total_lancamentos || 0} pagamento(s) realizados no período
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                  Volume de Baixas
+                </span>
+                <Clock className="h-4 w-4 text-blue-400" />
+              </div>
+              <strong className="text-xl font-mono font-black text-white block">
+                {relContasPagas.totais?.total_lancamentos || 0} Baixas
+              </strong>
+              <span className="text-[10px] text-slate-500 block">
+                Pagamentos totais e parcelas parciais
+              </span>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
+                  Recebimentos no Período
+                </span>
+                <ArrowDownRight className="h-4 w-4 text-indigo-400" />
+              </div>
+              <strong className="text-xl font-mono font-black text-indigo-400 block">
+                {formatMoney(relContasPagas.totais?.total_recebido)}
+              </strong>
+              <span className="text-[10px] text-slate-500 block">
+                Liquidações de fretes a receber de clientes
+              </span>
+            </div>
+          </div>
+
+          {/* TABELA ANALÍTICA DE BAIXAS */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl print:border-slate-300 print:bg-white print:rounded-none">
+            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <h3 className="font-bold text-white text-xs font-heading">
+                  Extrato Analítico de Baixas & Pagamentos Efetuados
+                </h3>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono">
+                {relContasPagas.baixas?.length || 0} registro(s) encontrado(s)
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300 print:text-slate-900">
+                <thead className="bg-slate-850 uppercase text-[10px] font-bold text-slate-400 border-b border-slate-800 print:bg-slate-100 print:text-slate-700 print:border-slate-300">
+                  <tr>
+                    <th className="px-3 py-2.5">Data Baixa</th>
+                    <th className="px-3 py-2.5">Tipo / Parcela</th>
+                    <th className="px-3 py-2.5">Favorecido / Fornecedor</th>
+                    <th className="px-3 py-2.5">Descrição / CT-e Vinculado</th>
+                    <th className="px-3 py-2.5 text-center">Forma</th>
+                    <th className="px-3 py-2.5">Comprovante / Ref.</th>
+                    <th className="px-3 py-2.5 text-right font-black">Valor Pago</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 print:divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                        Carregando extrato de contas pagas...
+                      </td>
+                    </tr>
+                  ) : relContasPagas.baixas?.length > 0 ? (
+                    relContasPagas.baixas.map((b, i) => (
+                      <tr key={b.id || i} className="hover:bg-slate-800/40 print:hover:bg-transparent transition">
+                        <td className="px-3 py-2 whitespace-nowrap font-mono text-slate-300 print:text-slate-800 text-[11px]">
+                          {b.data_pagamento ? new Date(b.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {b.tipo_parcela === 'por_fora' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              Por Fora
+                            </span>
+                          ) : b.tipo_parcela === 'adiantamento' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              Adiantamento
+                            </span>
+                          ) : b.tipo_parcela === 'repasse' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              Repasse
+                            </span>
+                          ) : b.tipo_parcela === 'comissao' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Comissão
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              CT-e Fiscal
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-semibold text-white print:text-slate-900">
+                          {b.favorecido || 'Não Identificado'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-300 print:text-slate-800">
+                          <p className="line-clamp-1">{b.descricao || '-'}</p>
+                          {b.observacoes && (
+                            <p className="text-[10px] text-slate-500 italic line-clamp-1">{b.observacoes}</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-slate-300 uppercase">
+                            {b.forma_pagamento || 'PIX'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[10px] text-slate-400 truncate max-w-[140px]">
+                          {b.comprovante_ref ? (
+                            <span className="text-emerald-400" title={b.comprovante_ref}>
+                              {b.comprovante_ref}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400 text-xs whitespace-nowrap">
+                          {formatMoney(b.valor)}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500 print:text-slate-800">
+                        Nenhum pagamento ou baixa registrada no período selecionado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

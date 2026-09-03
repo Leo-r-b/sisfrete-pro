@@ -79,6 +79,7 @@ router.get('/financeiro/titulos', authMiddleware, financeiroController.listTitul
 router.post('/financeiro/titulos', authMiddleware, financeiroController.createTitulo);
 router.put('/financeiro/titulos/:id', authMiddleware, financeiroController.updateTitulo);
 router.post('/financeiro/titulos/:id/baixar', authMiddleware, financeiroController.baixarTitulo);
+router.delete('/financeiro/baixas/:id', authMiddleware, requireRole(['admin', 'super_admin']), financeiroController.deleteBaixa);
 router.delete('/financeiro/titulos/:id', authMiddleware, requireRole(['admin', 'super_admin']), financeiroController.deleteTitulo);
 router.get('/financeiro/contas-pagar', authMiddleware, financeiroController.listContasPagar);
 router.get('/financeiro/contas-receber', authMiddleware, financeiroController.listContasReceber);
@@ -95,6 +96,7 @@ router.get('/relatorios/repasses-comissoes', authMiddleware, relatorioController
 router.get('/relatorios/dre-operacional', authMiddleware, relatorioController.getRelatorioDreOperacional);
 router.get('/relatorios/canhotos-pod', authMiddleware, relatorioController.getRelatorioCanhotosPod);
 router.get('/relatorios/manutencao-frota', authMiddleware, relatorioController.getRelatorioManutencaoFrota);
+router.get('/relatorios/contas-pagas', authMiddleware, relatorioController.getRelatorioContasPagas);
 
 
 // --- IMPORTAÇÃO CT-E (XML / DACTE) ---

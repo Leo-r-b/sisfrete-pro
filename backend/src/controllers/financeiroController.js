@@ -81,6 +81,7 @@ const getDashboardKPIs = (req, res) => {
         COALESCE(SUM(valor_frete_venda + CASE WHEN (numero_cte_2 IS NOT NULL OR valor_frete_venda_2 > 0 OR tipo_operacao = 'triangular') THEN valor_frete_venda_2 ELSE 0 END), 0) as total_venda,
         COALESCE(SUM(CASE WHEN valor_frete_real > 0 THEN valor_frete_real ELSE COALESCE(valor_frete_compra, 0) END), 0) as total_compra,
         COALESCE(SUM(valor_comissao), 0) as total_comissao,
+        COALESCE(SUM(peso_kg), 0) as total_peso_kg,
         COUNT(*) as total_fretes
       FROM fretes
       WHERE status_frete != 'cancelado' AND (empresa_id = ? OR empresa_id = ?)
@@ -225,6 +226,13 @@ const getDashboardKPIs = (req, res) => {
         total_adiantamentos_pagos: Number(totalPagoGeral.toFixed(2)),
         total_a_receber_clientes: Number(totalAReceberGeral.toFixed(2)),
         total_recebido_clientes: Number(totalRecebidoGeral.toFixed(2)),
+
+        // Métricas Contextuais por Modalidade (Subcontratação, Gestão de Pagamentos, Agenciamento)
+        modo_operacao: empresaObj?.modo_operacao || 'padrao',
+        lucro_operacional: Number((totalVendaVal - totalCompraVal).toFixed(2)),
+        margem_lucro_percentual: totalVendaVal > 0 ? Number((((totalVendaVal - totalCompraVal) / totalVendaVal) * 100).toFixed(1)) : 0,
+        total_peso_toneladas: Number(((fretesTotais.total_peso_kg || 0) / 1000).toFixed(2)),
+        total_repasses_geral: Number(((fretesTotais.repasse_pago || 0) + (fretesTotais.repasse_pendente || 0)).toFixed(2)),
       },
       status_counts,
       evolucao_mensal,
@@ -267,6 +275,63 @@ const listTitulos = (req, res) => {
     queryAvulsos += ` ORDER BY t.data_vencimento ASC, t.id DESC`;
 
     const titulosAvulsos = db.prepare(queryAvulsos).all(...paramsAvulsos);
+
+    // Buscar histórico completo de baixas atômicas e adiantamentos
+    const baixasHistorico = db.prepare(`
+      SELECT 
+        id, empresa_id, titulo_id, frete_id, tipo_titulo, tipo_parcela,
+        valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes, created_at
+      FROM financeiro_baixas_historico
+      WHERE empresa_id = ? OR empresa_id = ?
+      ORDER BY data_pagamento DESC, id DESC
+    `).all(empIdNum, empIdStr);
+
+    const adiantamentosLegado = db.prepare(`
+      SELECT 
+        id, empresa_id, frete_id, tipo as tipo_parcela,
+        valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes, created_at
+      FROM adiantamentos_historico
+      WHERE empresa_id = ? OR empresa_id = ?
+      ORDER BY data_pagamento DESC, id DESC
+    `).all(empIdNum, empIdStr);
+
+    // Mapear baixas por titulo_id e por frete_id
+    const baixasPorTituloId = new Map();
+    const baixasPorFreteId = new Map();
+
+    for (const b of baixasHistorico) {
+      if (b.titulo_id) {
+        if (!baixasPorTituloId.has(b.titulo_id)) baixasPorTituloId.set(b.titulo_id, []);
+        baixasPorTituloId.get(b.titulo_id).push(b);
+      }
+      if (b.frete_id) {
+        if (!baixasPorFreteId.has(b.frete_id)) baixasPorFreteId.set(b.frete_id, []);
+        baixasPorFreteId.get(b.frete_id).push(b);
+      }
+    }
+
+    for (const a of adiantamentosLegado) {
+      if (a.frete_id) {
+        if (!baixasPorFreteId.has(a.frete_id)) baixasPorFreteId.set(a.frete_id, []);
+        const lista = baixasPorFreteId.get(a.frete_id);
+        const jaExiste = lista.some(x => Math.abs(x.valor - a.valor) < 0.01 && x.data_pagamento === a.data_pagamento);
+        if (!jaExiste) {
+          lista.push({
+            id: `leg_${a.id}`,
+            empresa_id: a.empresa_id,
+            frete_id: a.frete_id,
+            tipo_titulo: 'pagar',
+            tipo_parcela: a.tipo_parcela || 'adiantamento',
+            valor: a.valor,
+            data_pagamento: a.data_pagamento,
+            forma_pagamento: a.forma_pagamento || 'PIX',
+            comprovante_ref: a.comprovante_ref,
+            observacoes: a.observacoes,
+            created_at: a.created_at
+          });
+        }
+      }
+    }
     
     // Mapear frete_ids que já têm títulos criados manualmente na tabela financeiro_titulos
     const fretesComTitulosAvulsos = new Set();
@@ -274,10 +339,26 @@ const listTitulos = (req, res) => {
       if (t.frete_id) {
         fretesComTitulosAvulsos.add(`${t.tipo}_${t.frete_id}`);
       }
+
+      const baixas = baixasPorTituloId.get(t.id) || [];
+      const valorTotal = Number(t.valor || 0);
+      const valorPagoCalculado = baixas.length > 0 
+        ? Number(baixas.reduce((acc, b) => acc + Number(b.valor || 0), 0).toFixed(2))
+        : Number(t.valor_pago || 0);
+      const saldoPendente = Math.max(0, Number((valorTotal - valorPagoCalculado).toFixed(2)));
+      const pctPago = valorTotal > 0 ? Number(((valorPagoCalculado / valorTotal) * 100).toFixed(1)) : 0;
+      const statusCalculado = saldoPendente <= 0.01 ? (t.tipo === 'receber' ? 'recebido' : 'pago') : (valorPagoCalculado > 0 ? 'parcial' : (t.status || 'pendente'));
+
       titulos.push({
         ...t,
         origem: t.frete_id ? 'frete_cte' : (t.origem || 'operacional_fixo'),
         is_frete: Boolean(t.frete_id),
+        valor_pago: valorPagoCalculado,
+        saldo_pendente: saldoPendente,
+        percentual_pago: pctPago,
+        quantidade_baixas: baixas.length,
+        historico_baixas: baixas,
+        status: statusCalculado
       });
     }
 
@@ -750,6 +831,13 @@ const baixarTitulo = (req, res) => {
         db.prepare(`UPDATE fretes SET status_recebimento_cliente = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)`).run(novoStatus, freteId, empIdNum, empIdStr);
       }
 
+      // Inserir registro detalhado na timeline de baixas
+      db.prepare(`
+        INSERT INTO financeiro_baixas_historico (
+          empresa_id, frete_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
+        ) VALUES (?, ?, 'receber', 'recebimento_cte', ?, ?, ?, ?, ?)
+      `).run(empresaId, freteId, vBaixa, dataPag, forma_pagamento || 'Boleto', comprovante_ref || null, observacoes || null);
+
       return res.json({ message: 'Recebimento de frete registrado com sucesso!' });
     }
 
@@ -768,6 +856,12 @@ const baixarTitulo = (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)
       `).run(dataPag, comprovante_ref || null, freteId, empIdNum, empIdStr);
+
+      db.prepare(`
+        INSERT INTO financeiro_baixas_historico (
+          empresa_id, frete_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
+        ) VALUES (?, ?, 'pagar', 'repasse', ?, ?, ?, ?, ?)
+      `).run(empresaId, freteId, Number(frete.valor_repasse || 0), dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
 
       return res.json({ message: 'Repasse marcado como quitado com sucesso!' });
     }
@@ -788,11 +882,18 @@ const baixarTitulo = (req, res) => {
         WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)
       `).run(dataPag, comprovante_ref || null, freteId, empIdNum, empIdStr);
 
+      db.prepare(`
+        INSERT INTO financeiro_baixas_historico (
+          empresa_id, frete_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
+        ) VALUES (?, ?, 'pagar', 'comissao', ?, ?, ?, ?, ?)
+      `).run(empresaId, freteId, Number(frete.valor_comissao || 0), dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
+
       return res.json({ message: 'Comissão de agenciamento marcada como quitada com sucesso!' });
     }
 
     // 3. Frete Freteiro a Pagar (frete_pag_15 ou frete_pag_comp_15)
     if (String(id).startsWith('frete_pag_')) {
+      const isComp = String(id).startsWith('frete_pag_comp_');
       const freteId = Number(id.replace('frete_pag_comp_', '').replace('frete_pag_', ''));
       if (!freteId || isNaN(freteId)) return res.status(400).json({ error: 'ID de frete inválido.' });
       const frete = db.prepare('SELECT * FROM fretes WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(freteId, empIdNum, empIdStr);
@@ -807,6 +908,12 @@ const baixarTitulo = (req, res) => {
         INSERT INTO adiantamentos_historico (empresa_id, frete_id, tipo, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes)
         VALUES (?, ?, 'saldo_final', ?, ?, ?, ?, ?)
       `).run(empresaId, freteId, vBaixa, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
+
+      db.prepare(`
+        INSERT INTO financeiro_baixas_historico (
+          empresa_id, frete_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
+        ) VALUES (?, ?, 'pagar', ?, ?, ?, ?, ?, ?)
+      `).run(empresaId, freteId, isComp ? 'por_fora' : 'fiscal', vBaixa, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
 
       const novoTotalPago = Number((jaPagoAnt + vBaixa).toFixed(2));
       const novoSaldo = Math.max(0, Number((vTotal - novoTotalPago).toFixed(2)));
@@ -838,13 +945,8 @@ const baixarTitulo = (req, res) => {
     const jaPagoAnterior = Number(titulo.valor_pago || 0);
 
     let novoTotalPago = 0;
-    if (valor_baixa !== undefined) {
-      novoTotalPago = Number((jaPagoAnterior + Number(valor_baixa)).toFixed(2));
-    } else if (valor_pago !== undefined) {
-      novoTotalPago = Number(Number(valor_pago).toFixed(2));
-    } else {
-      novoTotalPago = valorTotalTitulo;
-    }
+    const vBaixaAvulso = valor_baixa !== undefined ? Number(valor_baixa) : (valor_pago !== undefined ? Number(valor_pago) : Math.max(0, valorTotalTitulo - jaPagoAnterior));
+    novoTotalPago = Number((jaPagoAnterior + vBaixaAvulso).toFixed(2));
 
     let novoStatus = 'pendente';
     if (novoTotalPago >= valorTotalTitulo - 0.01) {
@@ -879,6 +981,14 @@ const baixarTitulo = (req, res) => {
       empIdStr
     );
 
+    if (vBaixaAvulso > 0) {
+      db.prepare(`
+        INSERT INTO financeiro_baixas_historico (
+          empresa_id, titulo_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
+        ) VALUES (?, ?, ?, 'parcial', ?, ?, ?, ?, ?)
+      `).run(empresaId, id, titulo.tipo, vBaixaAvulso, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
+    }
+
     return res.json({ 
       message: novoStatus === 'pago' ? 'Título quitado 100% com sucesso!' : `Baixa parcial registrada com sucesso! Saldo restante: R$ ${(valorTotalTitulo - novoTotalPago).toFixed(2)}`,
       status: novoStatus,
@@ -905,6 +1015,53 @@ const deleteTitulo = (req, res) => {
     return res.json({ message: 'Título excluído com sucesso!' });
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao excluir título.' });
+  }
+};
+
+/**
+ * Exclusão / Estorno de Baixa Individual (com recálculo do saldo)
+ */
+const deleteBaixa = (req, res) => {
+  try {
+    const { id } = req.params;
+    const empresaId = req.empresaId || req.user?.empresa_id || 1;
+    const empIdNum = Number(empresaId);
+    const empIdStr = String(empresaId);
+
+    const baixa = db.prepare('SELECT * FROM financeiro_baixas_historico WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(id, empIdNum, empIdStr);
+    if (!baixa) {
+      return res.status(404).json({ error: 'Registro de baixa não encontrado.' });
+    }
+
+    db.prepare('DELETE FROM financeiro_baixas_historico WHERE id = ?').run(id);
+
+    // Se tiver titulo_id avulso, recalcula o valor_pago e status do título
+    if (baixa.titulo_id) {
+      const somaRestante = db.prepare('SELECT COALESCE(SUM(valor), 0) as total FROM financeiro_baixas_historico WHERE titulo_id = ?').get(baixa.titulo_id)?.total || 0;
+      const tit = db.prepare('SELECT valor FROM financeiro_titulos WHERE id = ?').get(baixa.titulo_id);
+      const valTit = Number(tit?.valor || 0);
+      const novoStatus = somaRestante >= valTit - 0.01 ? 'pago' : (somaRestante > 0 ? 'parcial' : 'pendente');
+      db.prepare('UPDATE financeiro_titulos SET valor_pago = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(somaRestante, novoStatus, baixa.titulo_id);
+    }
+
+    // Se tiver frete_id, também remove de adiantamentos_historico se existir
+    if (baixa.frete_id) {
+      try {
+        db.prepare('DELETE FROM adiantamentos_historico WHERE frete_id = ? AND ABS(valor - ?) < 0.01 AND data_pagamento = ? LIMIT 1').run(baixa.frete_id, baixa.valor, baixa.data_pagamento);
+      } catch (e) {}
+
+      const somaFreteRestante = db.prepare('SELECT COALESCE(SUM(valor), 0) as total FROM adiantamentos_historico WHERE frete_id = ?').get(baixa.frete_id)?.total || 0;
+      const f = db.prepare('SELECT valor_frete_real, valor_frete_compra, valor_saldo_motorista FROM fretes WHERE id = ?').get(baixa.frete_id);
+      const vTotalFrete = Number(f?.valor_frete_real || f?.valor_frete_compra || 0);
+      const novoSaldo = Math.max(0, Number((vTotalFrete - somaFreteRestante).toFixed(2)));
+      const novoStatus = novoSaldo <= 0.01 ? 'quitado' : (somaFreteRestante > 0 ? 'parcial' : 'pendente');
+      db.prepare('UPDATE fretes SET valor_saldo_motorista = ?, status_pagamento_motorista = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(novoSaldo, novoStatus, baixa.frete_id);
+    }
+
+    return res.json({ message: 'Baixa estornada com sucesso e saldo recalculado!' });
+  } catch (err) {
+    console.error('Erro deleteBaixa:', err);
+    return res.status(500).json({ error: 'Erro ao estornar baixa: ' + err.message });
   }
 };
 
@@ -986,6 +1143,7 @@ module.exports = {
   updateTitulo,
   baixarTitulo,
   deleteTitulo,
+  deleteBaixa,
   listContasPagar,
   listContasReceber,
   lancarPagamentoMotorista,

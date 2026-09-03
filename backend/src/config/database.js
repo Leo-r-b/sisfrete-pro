@@ -277,6 +277,28 @@ function initDatabase() {
       FOREIGN KEY (frete_id) REFERENCES fretes(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS financeiro_baixas_historico (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      empresa_id INTEGER NOT NULL,
+      titulo_id INTEGER,          -- Vinculado a financeiro_titulos (se título avulso)
+      frete_id INTEGER,           -- Vinculado a fretes (se título originado de CT-e)
+      tipo_titulo TEXT NOT NULL,  -- 'pagar' | 'receber'
+      tipo_parcela TEXT DEFAULT 'parcial', -- 'adiantamento', 'saldo', 'fiscal', 'por_fora', 'comissao', 'repasse', 'quitacao'
+      valor REAL NOT NULL,
+      data_pagamento DATE DEFAULT (DATE('now')),
+      forma_pagamento TEXT DEFAULT 'PIX', -- 'PIX', 'TED', 'Boleto', 'Dinheiro', 'Cartão'
+      comprovante_ref TEXT,
+      observacoes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
+      FOREIGN KEY (titulo_id) REFERENCES financeiro_titulos(id) ON DELETE CASCADE,
+      FOREIGN KEY (frete_id) REFERENCES fretes(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_baixas_empresa ON financeiro_baixas_historico(empresa_id);
+    CREATE INDEX IF NOT EXISTS idx_baixas_titulo ON financeiro_baixas_historico(titulo_id);
+    CREATE INDEX IF NOT EXISTS idx_baixas_frete ON financeiro_baixas_historico(frete_id);
+
     CREATE TABLE IF NOT EXISTS mdfes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       empresa_id INTEGER DEFAULT 1,

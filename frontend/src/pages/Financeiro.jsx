@@ -33,7 +33,13 @@ import {
   CheckCheck,
   QrCode,
   MessageCircle,
-  Send
+  Send,
+  ChevronDown,
+  ChevronUp,
+  TrendingUp,
+  Plus,
+  PackageCheck,
+  Globe
 } from 'lucide-react';
 import api from '../services/api';
 import { StatusPagamentoBadge, StatusRecebimentoBadge, StatusFreteBadge } from '../components/StatusBadge';
@@ -92,6 +98,30 @@ export default function Financeiro({ onOpenLancamento, onOpenRecibo }) {
   const [whatsAppModalFinanceiro, setWhatsAppModalFinanceiro] = useState(null);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [whatsappTelefone, setWhatsappTelefone] = useState('');
+
+  // Controle de expansão de histórico de baixas parciais
+  const [expandedTituloIds, setExpandedTituloIds] = useState(new Set());
+
+  const toggleExpandTitulo = (id) => {
+    setExpandedTituloIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleEstornarBaixa = async (baixaId) => {
+    if (!window.confirm('Tem certeza que deseja estornar este pagamento? O saldo pendente será recalculado automaticamente.')) {
+      return;
+    }
+    try {
+      await api.delete(`/financeiro/baixas/${baixaId}`);
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao estornar baixa.');
+    }
+  };
 
   // Refs de controle — declarados após os estados que referenciam
   const abortControllerRef = useRef(null);
@@ -462,94 +492,276 @@ _Favor enviar o comprovante de pagamento após a transferência._
         </div>
       )}
 
-      {/* Cards de Resumo Financeiro & KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        
-        {/* 1. Total a Receber */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-emerald-500/20 shadow-lg space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-              <ArrowUpRight className="h-4 w-4" />
-              <span>Total a Receber</span>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300">
-              Pendente
-            </span>
-          </div>
-          <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
-            {formatMoney(kpis?.resumo?.totalAReceber || 0)}
-          </h3>
-          <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
-            <span>Já Recebido:</span>
-            <strong className="text-emerald-400 font-mono">{formatMoney(kpis?.resumo?.totalRecebido || 0)}</strong>
-          </p>
-        </div>
+      {/* Cards de Resumo Financeiro & KPIs Contextuais por Modalidade */}
+      {(() => {
+        const modoOperacao = activeEmpresa?.modo_operacao || kpis?.resumo?.modo_operacao || 'padrao';
+        const isGestao = modoOperacao === 'gestao_pagamentos';
+        const isRepasse = modoOperacao === 'agenciamento_repasse';
 
-        {/* 2. Total a Pagar */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-rose-500/20 shadow-lg space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
-              <ArrowDownRight className="h-4 w-4" />
-              <span>Total a Pagar</span>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300">
-              Pendente
-            </span>
-          </div>
-          <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
-            {formatMoney(kpis?.resumo?.totalAPagar || 0)}
-          </h3>
-          <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
-            <span>Já Quitado:</span>
-            <strong className="text-rose-400 font-mono">{formatMoney(kpis?.resumo?.totalPago || 0)}</strong>
-          </p>
-        </div>
+        if (isGestao) {
+          // Modalidade: GESTÃO DE PAGAMENTOS (Ex: Farimax)
+          // Foco: Cargas/Viagens Gerenciadas, Freteiros a Pagar, Total Efetivamente Quitado e Repasses a Terceiros
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* 1. Cargas Gerenciadas */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-indigo-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <PackageCheck className="h-4 w-4" />
+                    <span>Cargas Gerenciadas</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 font-bold">
+                    Gestão & Rateio
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                  {kpis?.resumo?.totalFretes || 0} Viagens
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Peso Movimentado:</span>
+                  <strong className="text-indigo-300 font-mono">{kpis?.resumo?.total_peso_toneladas || '0.00'} ton</strong>
+                </p>
+              </div>
 
-        {/* 3. Saldo Líquido Projetado */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-blue-500/20 shadow-lg space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-              <Wallet className="h-4 w-4" />
-              <span>Saldo Projetado</span>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300">
-              Líquido
-            </span>
-          </div>
-          <h3 className={`text-xl sm:text-2xl font-black font-mono ${
-            (kpis?.resumo?.saldoProjetado || 0) >= 0 ? 'text-blue-400' : 'text-rose-400'
-          }`}>
-            {formatMoney(kpis?.resumo?.saldoProjetado || 0)}
-          </h3>
-          <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
-            <span>Realizado no Caixa:</span>
-            <strong className="text-white font-mono">{formatMoney(kpis?.resumo?.saldoRealizado || 0)}</strong>
-          </p>
-        </div>
+              {/* 2. Freteiros a Pagar (Saldo Aberto) */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-amber-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ArrowDownRight className="h-4 w-4" />
+                    <span>A Pagar aos Freteiros</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 font-bold">
+                    Saldo Aberto
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                  {formatMoney(kpis?.resumo?.totalAPagar || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Frete Contratado:</span>
+                  <strong className="text-amber-400 font-mono">{formatMoney(kpis?.resumo?.totalCompraFretes || 0)}</strong>
+                </p>
+              </div>
 
-        {/* 4. Comissões de Frete / Margem Operacional */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-purple-500/20 shadow-lg space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-              <Truck className="h-4 w-4" />
-              <span>
-                {metodologiaAtiva === 'agenciamento' ? 'Comissão da Agência' : metodologiaAtiva === 'transportadora' ? 'Lucro de Fretes' : 'Comissão & Margem'}
-              </span>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300">
-              {kpis?.resumo?.totalFretes || 0} Viagens
-            </span>
-          </div>
-          <h3 className="text-xl sm:text-2xl font-black text-purple-400 font-mono">
-            {formatMoney(kpis?.resumo?.totalComissaoFretes || 0)}
-          </h3>
-          <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
-            <span>{metodologiaAtiva === 'agenciamento' ? 'Total Agenciado:' : 'Faturamento Bruto:'}</span>
-            <strong className="text-white font-mono">{formatMoney(kpis?.resumo?.totalVendaFretes || 0)}</strong>
-          </p>
-        </div>
+              {/* 3. Total Quitado */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-emerald-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Total Já Quitado</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold">
+                    Liquidado
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                  {formatMoney(kpis?.resumo?.totalPago || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Status Geral:</span>
+                  <strong className="text-emerald-300 font-mono">Baixas Parciais + Totais</strong>
+                </p>
+              </div>
 
-      </div>
+              {/* 4. Repasses & Terceiros */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-purple-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Repeat className="h-4 w-4" />
+                    <span>Repasses & Encargos</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 font-bold">
+                    Terceiros
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-purple-400 font-mono">
+                  {formatMoney(kpis?.resumo?.total_repasses_geral || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Comissão / Repasse:</span>
+                  <strong className="text-white font-mono">{formatMoney(kpis?.resumo?.totalComissaoFretes || 0)}</strong>
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        if (isRepasse) {
+          // Modalidade: AGENCIAMENTO & REPASSE (Ex: Colorado)
+          // Foco: Volume Agenciado, Comissão da Agência, Repasses Pendentes e Concluídos
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* 1. Volume Bruto Agenciado */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-blue-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="h-4 w-4" />
+                    <span>Volume Agenciado</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-bold">
+                    {kpis?.resumo?.totalFretes || 0} CT-es
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                  {formatMoney(kpis?.resumo?.totalVendaFretes || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Volume Total:</span>
+                  <strong className="text-blue-300 font-mono">{kpis?.resumo?.total_peso_toneladas || '0.00'} ton</strong>
+                </p>
+              </div>
+
+              {/* 2. Comissão Retida da Agência */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-purple-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <TrendingUp className="h-4 w-4" />
+                    <span>Comissão da Agência</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 font-bold">
+                    Receita Líquida
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-purple-400 font-mono">
+                  {formatMoney(kpis?.resumo?.totalComissaoFretes || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Margem Retida:</span>
+                  <strong className="text-white font-mono">5.0% Médio</strong>
+                </p>
+              </div>
+
+              {/* 3. Repasses a Fazer */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-rose-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ArrowDownRight className="h-4 w-4" />
+                    <span>Repasses Pendentes</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 font-bold">
+                    A Pagar
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                  {formatMoney(kpis?.resumo?.totalAPagar || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Destino:</span>
+                  <strong className="text-rose-400 font-mono">Embarcadores & Freteiros</strong>
+                </p>
+              </div>
+
+              {/* 4. Repasses Concluídos */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-emerald-500/20 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Repasses Efetuados</span>
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold">
+                    Quitado
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                  {formatMoney(kpis?.resumo?.totalPago || 0)}
+                </h3>
+                <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                  <span>Total Liquidado:</span>
+                  <strong className="text-emerald-300 font-mono">{formatMoney(kpis?.resumo?.totalPago || 0)}</strong>
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        // Modalidade: PADRÃO / SUBCONTRATAÇÃO / TRANSPORTADORA (Ex: Gilmar / Boblog)
+        // Foco: Faturamento (CT-e), Custos de Frete, LUCRO OPERACIONAL e Caixa Realizado
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* 1. Total a Receber */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-emerald-500/20 shadow-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowUpRight className="h-4 w-4" />
+                  <span>Faturamento de Fretes</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold">
+                  CT-es
+                </span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                {formatMoney(kpis?.resumo?.totalAReceber || 0)}
+              </h3>
+              <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                <span>Já Recebido:</span>
+                <strong className="text-emerald-400 font-mono">{formatMoney(kpis?.resumo?.totalRecebido || 0)}</strong>
+              </p>
+            </div>
+
+            {/* 2. Total a Pagar */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-rose-500/20 shadow-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1">
+                  <ArrowDownRight className="h-4 w-4" />
+                  <span>Custos de Transporte</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 font-bold">
+                  Freteiros + Despesas
+                </span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white font-mono">
+                {formatMoney(kpis?.resumo?.totalAPagar || 0)}
+              </h3>
+              <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                <span>Já Quitado:</span>
+                <strong className="text-rose-400 font-mono">{formatMoney(kpis?.resumo?.totalPago || 0)}</strong>
+              </p>
+            </div>
+
+            {/* 3. Lucro Operacional (Subcontratação) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-emerald-500/30 shadow-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1">
+                  <TrendingUp className="h-4 w-4" />
+                  <span>Lucro Operacional</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 font-bold">
+                  Margem {kpis?.resumo?.margem_lucro_percentual || 0}%
+                </span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-emerald-400 font-mono">
+                {formatMoney(kpis?.resumo?.lucro_operacional || 0)}
+              </h3>
+              <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                <span>Viagens Operadas:</span>
+                <strong className="text-white font-mono">{kpis?.resumo?.totalFretes || 0} Viagens ({kpis?.resumo?.total_peso_toneladas || '0.00'}t)</strong>
+              </p>
+            </div>
+
+            {/* 4. Saldo em Caixa Realizado */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-blue-500/20 shadow-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                  <Wallet className="h-4 w-4" />
+                  <span>Saldo em Caixa</span>
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 font-bold">
+                  Realizado
+                </span>
+              </div>
+              <h3 className={`text-xl sm:text-2xl font-black font-mono ${
+                (kpis?.resumo?.saldoRealizado || 0) >= 0 ? 'text-blue-400' : 'text-rose-400'
+              }`}>
+                {formatMoney(kpis?.resumo?.saldoRealizado || 0)}
+              </h3>
+              <p className="text-[11px] text-slate-400 flex justify-between pt-1 border-t border-slate-800">
+                <span>Projetado a Receber:</span>
+                <strong className="text-white font-mono">{formatMoney(kpis?.resumo?.saldoProjetado || 0)}</strong>
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Navegação de Sub-Abas do Módulo Financeiro */}
       <div className="flex border-b border-slate-800 gap-2 overflow-x-auto">
@@ -708,7 +920,8 @@ _Favor enviar o comprovante de pagamento após a transferência._
                     const isVencido = !isQuitado && t.data_vencimento && t.data_vencimento < new Date().toISOString().slice(0, 10);
 
                     return (
-                      <tr key={t.id} className="hover:bg-slate-800/40 transition">
+                      <React.Fragment key={t.id}>
+                        <tr className="hover:bg-slate-800/40 transition">
                         
                         {/* Descrição & Origem */}
                         <td className="px-3 py-2.5">
@@ -786,7 +999,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                           )}
                         </td>
 
-                        {/* Status */}
+                        {/* Status com Botão de Extrato de Baixas */}
                         <td className="px-3 py-2.5 text-center whitespace-nowrap">
                           {isQuitado ? (
                             <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
@@ -804,20 +1017,31 @@ _Favor enviar o comprovante de pagamento após a transferência._
                               <span>Pendente</span>
                             </span>
                           )}
+
+                          {/* Botão de Histórico de Baixas Parciais */}
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandTitulo(t.id)}
+                            className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 mx-auto px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 transition cursor-pointer"
+                            title="Ver histórico detalhado de parcelas e pagamentos parciais"
+                          >
+                            {expandedTituloIds.has(t.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            <span>{t.quantidade_baixas > 0 ? `${t.quantidade_baixas} Baixa(s)` : 'Ver Extrato'}</span>
+                          </button>
                         </td>
 
-                        {/* Ações Rápidas: Baixar, WhatsApp, Boleto, Recibo, Excluir */}
+                        {/* Ações Rápidas: Baixar, Recibo, WhatsApp, Excluir */}
                         <td className="px-3 py-2.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             
-                            {/* Botão de Baixa */}
+                            {/* Botão de Baixa / Pagamento */}
                             {!isQuitado ? (
                               <button
                                 onClick={() => handleOpenBaixa(t)}
                                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                                   isParcial 
-                                    ? 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40' 
-                                    : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950' 
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
                                 }`}
                                 title="Registrar Pagamento / Baixar Título"
                               >
@@ -825,10 +1049,22 @@ _Favor enviar o comprovante de pagamento após a transferência._
                                 <span>{isParcial ? `Pagar Saldo (${formatMoney(saldoPendente)})` : (t.tipo === 'receber' ? 'Receber' : 'Quitar')}</span>
                               </button>
                             ) : (
-                              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                              <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
                                 <Check className="h-3.5 w-3.5" />
-                                <span>Baixado</span>
+                                <span>Quitado</span>
                               </span>
+                            )}
+
+                            {/* Botão Recibo Oficial */}
+                            {t.frete_id && onOpenRecibo && (
+                              <button
+                                onClick={() => handleOpenReciboFromTitulo(t)}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[11px] font-bold"
+                                title="Imprimir Recibo Oficial (Visão Empresa ou Motorista)"
+                              >
+                                <Printer className="h-3.5 w-3.5" />
+                                <span>Recibo</span>
+                              </button>
                             )}
 
                             {/* Botão WhatsApp Cobrança / PIX */}
@@ -839,23 +1075,12 @@ _Favor enviar o comprovante de pagamento após a transferência._
                                 setWhatsappTelefone('');
                               }}
                               className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition cursor-pointer shrink-0"
-                              title={t.tipo === 'receber' ? 'Enviar cobrança com chave PIX no WhatsApp' : 'Enviar informativo de acerto no WhatsApp'}
+                              title={t.tipo === 'receber' ? 'Enviar cobrança com chave PIX no WhatsApp' : 'Enviar comprovante / acerto no WhatsApp'}
                             >
                               <MessageCircle className="h-3.5 w-3.5" />
                             </button>
 
-                            {/* Botão Recibo se houver frete vinculado */}
-                            {t.frete_id && onOpenRecibo && (
-                              <button
-                                onClick={() => handleOpenReciboFromTitulo(t)}
-                                className="p-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer shrink-0"
-                                title="Imprimir Recibo Oficial"
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-
-                            {/* Botão Excluir Lançamento (Para Fretes ou Títulos Avulsos) */}
+                            {/* Botão Excluir */}
                             <button
                               onClick={() => setTituloParaExcluir(t)}
                               className="p-1 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 transition cursor-pointer shrink-0"
@@ -867,8 +1092,148 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         </td>
 
                       </tr>
-                    );
-                  })
+
+                      {/* SUB-LINHA EXPANSÍVEL: HISTÓRICO COMPLETO DE BAIXAS PARCIAIS */}
+                      {expandedTituloIds.has(t.id) && (
+                        <tr key={`extrato_${t.id}`} className="bg-slate-950/90 border-b border-slate-800">
+                          <td colSpan={7} className="px-4 py-4 sm:px-6">
+                            <div className="rounded-2xl bg-slate-900/90 border border-slate-700/80 p-4 space-y-3.5 shadow-2xl">
+                              {/* Header do Accordion */}
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-blue-400" />
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                                      Histórico de Baixas & Pagamentos
+                                    </h4>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30 font-mono font-bold">
+                                      {t.historico_baixas?.length || 0} lançamento(s)
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400">
+                                    Título: <strong className="text-slate-200">{t.descricao}</strong> | Favorecido: <strong className="text-slate-200">{t.pessoa_nome || '-'}</strong>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {!isQuitado && (
+                                    <button
+                                      onClick={() => handleOpenBaixa(t)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-950 transition cursor-pointer"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      <span>Lançar Nova Baixa ({formatMoney(saldoPendente)})</span>
+                                    </button>
+                                  )}
+                                  {t.frete_id && onOpenRecibo && (
+                                    <button
+                                      onClick={() => handleOpenReciboFromTitulo(t)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs transition cursor-pointer"
+                                    >
+                                      <Printer className="h-3.5 w-3.5" />
+                                      <span>Imprimir Recibo</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Barra de Progresso Visual de Quitação */}
+                              <div className="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                                <div className="flex justify-between items-center text-[11px] font-mono">
+                                  <span className="text-slate-400">
+                                    Total do Título: <strong className="text-white">{formatMoney(valorTotal)}</strong>
+                                  </span>
+                                  <span className="text-emerald-400">
+                                    Total Pago: <strong className="font-bold">{formatMoney(valorPago)}</strong> ({t.percentual_pago || 0}%)
+                                  </span>
+                                  <span className={saldoPendente > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+                                    {saldoPendente > 0 ? `Saldo Pendente: ${formatMoney(saldoPendente)}` : '✅ 100% Liquidado'}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                                  <div
+                                    className={`h-full transition-all duration-500 ${
+                                      (t.percentual_pago || 0) >= 100 
+                                        ? 'bg-emerald-500' 
+                                        : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, Math.max(0, t.percentual_pago || 0))}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Tabela de Baixas */}
+                              {t.historico_baixas && t.historico_baixas.length > 0 ? (
+                                <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40">
+                                  <table className="w-full text-left text-[11px]">
+                                    <thead className="bg-slate-800/60 uppercase text-[9.5px] font-bold text-slate-400 border-b border-slate-800">
+                                      <tr>
+                                        <th className="py-2 px-3">Data</th>
+                                        <th className="py-2 px-3">Tipo / Parcela</th>
+                                        <th className="py-2 px-3">Forma</th>
+                                        <th className="py-2 px-3">Comprovante / Autenticação</th>
+                                        <th className="py-2 px-3">Observações</th>
+                                        <th className="py-2 px-3 text-right">Valor Pago</th>
+                                        <th className="py-2 px-3 text-center">Ações</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-850 font-mono">
+                                      {t.historico_baixas.map((bx, idx) => (
+                                        <tr key={bx.id || idx} className="hover:bg-slate-800/30 transition">
+                                          <td className="py-2 px-3 text-slate-200">
+                                            {bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                                          </td>
+                                          <td className="py-2 px-3">
+                                            <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-blue-300 border border-slate-700 font-sans font-semibold">
+                                              {bx.tipo_parcela === 'por_fora' ? '💼 Frete Por Fora' : bx.tipo_parcela === 'fiscal' ? '📄 Parcela CT-e' : bx.tipo_parcela === 'repasse' ? '🔄 Repasse' : bx.tipo_parcela === 'comissao' ? '📈 Comissão' : '💵 Baixa Parcial'}
+                                            </span>
+                                          </td>
+                                          <td className="py-2 px-3 text-slate-300 font-sans">
+                                            {bx.forma_pagamento || 'PIX'}
+                                          </td>
+                                          <td className="py-2 px-3 text-slate-400 font-sans">
+                                            {bx.comprovante_ref ? (
+                                              <span className="text-slate-300 font-mono text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                                                {bx.comprovante_ref}
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-500 italic text-[10px]">-</span>
+                                            )}
+                                          </td>
+                                          <td className="py-2 px-3 text-slate-400 font-sans max-w-[150px] truncate" title={bx.observacoes}>
+                                            {bx.observacoes || '-'}
+                                          </td>
+                                          <td className="py-2 px-3 text-right font-bold text-emerald-400 text-xs">
+                                            {formatMoney(bx.valor)}
+                                          </td>
+                                          <td className="py-2 px-3 text-center">
+                                            {typeof bx.id === 'number' && (
+                                              <button
+                                                onClick={() => handleEstornarBaixa(bx.id)}
+                                                className="p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                                                title="Estornar este pagamento e estornar saldo"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-slate-500 text-xs italic bg-slate-950/30 rounded-xl border border-dashed border-slate-800">
+                                  Nenhuma baixa parcial registrada até o momento para este lançamento.
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
                 ) : (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">

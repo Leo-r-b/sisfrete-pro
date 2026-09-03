@@ -9,6 +9,7 @@ const ALLOWED_TABLES = [
   { id: 'clientes', label: 'Clientes / Embarcadores', hasEmpresaId: true, primaryKey: 'id', categoria: 'cadastros' },
   { id: 'users', label: 'Usuários & Colaboradores', hasEmpresaId: true, primaryKey: 'id', categoria: 'seguranca' },
   { id: 'financeiro_titulos', label: 'Contas a Pagar e Receber', hasEmpresaId: true, primaryKey: 'id', categoria: 'financeiro' },
+  { id: 'financeiro_baixas_historico', label: 'Histórico de Baixas & Pagamentos', hasEmpresaId: true, primaryKey: 'id', categoria: 'financeiro' },
   { id: 'adiantamentos_historico', label: 'Histórico de Adiantamentos', hasEmpresaId: true, primaryKey: 'id', categoria: 'financeiro' },
   { id: 'mdfes', label: 'Manifestos de Carga (MDF-e 3.00)', hasEmpresaId: true, primaryKey: 'id', categoria: 'operacional' },
   { id: 'veiculos', label: 'Veículos / Frotas', hasEmpresaId: true, primaryKey: 'id', categoria: 'frotas' },
