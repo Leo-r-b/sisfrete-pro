@@ -19,6 +19,7 @@ const canhotoController = require('../controllers/canhotoController');
 const rastreamentoController = require('../controllers/rastreamentoController');
 const frotasController = require('../controllers/frotasController');
 const portalClienteController = require('../controllers/portalClienteController');
+const databaseExplorerController = require('../controllers/databaseExplorerController');
 const calculadoraAnttService = require('../services/calculadoraAnttService');
 const { consultarDistanciaRodoviaria } = require('../services/distanciaService');
 const cobrancaBancariaService = require('../services/cobrancaBancariaService');
@@ -175,5 +176,14 @@ router.get('/users', authMiddleware, requireRole(['admin', 'super_admin']), user
 router.post('/users', authMiddleware, requireRole(['admin', 'super_admin']), userController.createUser);
 router.put('/users/:id', authMiddleware, requireRole(['admin', 'super_admin']), userController.updateUser);
 router.delete('/users/:id', authMiddleware, requireRole(['admin', 'super_admin']), userController.deleteUser);
+
+// --- GESTÃO & VISUALIZAÇÃO DE BANCO DE DADOS (DATABASE EXPLORER) - EXCLUSIVO SUPER_ADMIN ---
+router.get('/saas/database/summary', authMiddleware, requireRole(['super_admin']), databaseExplorerController.getTableSummary);
+router.get('/saas/database/table-data', authMiddleware, requireRole(['super_admin']), databaseExplorerController.getTableData);
+router.post('/saas/database/record', authMiddleware, requireRole(['super_admin']), databaseExplorerController.insertRecord);
+router.put('/saas/database/record', authMiddleware, requireRole(['super_admin']), databaseExplorerController.updateRecord);
+router.delete('/saas/database/record', authMiddleware, requireRole(['super_admin']), databaseExplorerController.deleteRecord);
+router.post('/saas/database/purge-licenca', authMiddleware, requireRole(['super_admin']), databaseExplorerController.purgeLicenca);
+router.get('/saas/database/download-backup', authMiddleware, requireRole(['super_admin']), databaseExplorerController.downloadBackup);
 
 module.exports = router;

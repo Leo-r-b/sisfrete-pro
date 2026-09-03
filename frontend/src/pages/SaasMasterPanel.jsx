@@ -33,7 +33,8 @@ import {
   Layers,
   Truck,
   Upload,
-  Wrench
+  Wrench,
+  Database
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -46,6 +47,7 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import DatabaseExplorer from '../components/DatabaseExplorer';
 
 export const MODULOS_SISTEMA = [
   { id: 'dashboard', nome: 'Painel Geral', desc: 'Métricas, gráficos executivos e margem de lucro' },
@@ -65,7 +67,8 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
   const { user, empresas, switchEmpresa, loadEmpresas } = useAuth();
   
   // Abas do Painel Master
-  const [masterTab, setMasterTab] = useState('metricas'); // 'metricas' | 'licencas' | 'cobrancas' | 'usuarios'
+  const [masterTab, setMasterTab] = useState('metricas'); // 'metricas' | 'licencas' | 'cobrancas' | 'usuarios' | 'banco_dados'
+  const [dbExplorerEmpresaId, setDbExplorerEmpresaId] = useState('todas');
 
   // Dashboard Data State
   const [dashboardData, setDashboardData] = useState(null);
@@ -585,6 +588,21 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
           <span>Usuários Globais</span>
           <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 font-mono">
             {usersList.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setMasterTab('banco_dados')}
+          className={`pb-3 px-3 sm:px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap cursor-pointer ${
+            masterTab === 'banco_dados'
+              ? 'border-purple-500 text-purple-400'
+              : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Database className="h-4 w-4" />
+          <span>Tabelas do Banco</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
+            Render SQLite
           </span>
         </button>
       </div>
@@ -1136,6 +1154,18 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
 
                     <div className="flex items-center gap-1.5">
                       <button
+                        onClick={() => {
+                          setDbExplorerEmpresaId(String(emp.id));
+                          setMasterTab('banco_dados');
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-purple-900/40 hover:text-purple-300 text-slate-300 font-bold text-xs border border-slate-700 transition"
+                        title="Ver e gerenciar banco de dados desta licença"
+                      >
+                        <Database className="h-3.5 w-3.5 text-purple-400" />
+                        <span>Ver Banco</span>
+                      </button>
+
+                      <button
                         onClick={() => handleAcessarAmbienteOperacional(emp.id)}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow transition"
                         title="Entrar no painel operacional de fretes desta empresa"
@@ -1467,6 +1497,13 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ABA 5: EXPLORADOR E GESTOR DE BANCO DE DADOS (RENDER SQLITE) */}
+      {/* ========================================================================= */}
+      {masterTab === 'banco_dados' && (
+        <DatabaseExplorer initialEmpresaId={dbExplorerEmpresaId} />
       )}
 
       {/* ========================================================================= */}
