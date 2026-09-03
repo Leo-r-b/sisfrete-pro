@@ -548,6 +548,8 @@ function initDatabase() {
     { name: 'aliquota_icms', def: 'REAL DEFAULT 12.0' },
     { name: 'cst_icms', def: "TEXT DEFAULT '00'" },
     { name: 'cfop', def: "TEXT DEFAULT '5353'" },
+    // Desconto / Abatimento de Frete (Roubo de carga, quebra, avaria)
+    { name: 'motivo_desconto', def: 'TEXT' },
   ];
 
   for (const col of newCols) {
@@ -565,6 +567,28 @@ function initDatabase() {
     const motCols = db.prepare(`PRAGMA table_info(motoristas)`).all().map(c => c.name);
     if (!motCols.includes('numero_eixos')) {
       db.exec(`ALTER TABLE motoristas ADD COLUMN numero_eixos INTEGER DEFAULT 6`);
+    }
+  } catch (e) {}
+
+  // Garantir colunas de desconto em financeiro_titulos
+  try {
+    const titCols = db.prepare(`PRAGMA table_info(financeiro_titulos)`).all().map(c => c.name);
+    if (!titCols.includes('valor_desconto')) {
+      db.exec(`ALTER TABLE financeiro_titulos ADD COLUMN valor_desconto REAL DEFAULT 0`);
+    }
+    if (!titCols.includes('motivo_desconto')) {
+      db.exec(`ALTER TABLE financeiro_titulos ADD COLUMN motivo_desconto TEXT`);
+    }
+  } catch (e) {}
+
+  // Garantir colunas de desconto em financeiro_baixas_historico
+  try {
+    const baixasCols = db.prepare(`PRAGMA table_info(financeiro_baixas_historico)`).all().map(c => c.name);
+    if (!baixasCols.includes('desconto')) {
+      db.exec(`ALTER TABLE financeiro_baixas_historico ADD COLUMN desconto REAL DEFAULT 0`);
+    }
+    if (!baixasCols.includes('motivo_desconto')) {
+      db.exec(`ALTER TABLE financeiro_baixas_historico ADD COLUMN motivo_desconto TEXT`);
     }
   } catch (e) {}
 

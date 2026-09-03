@@ -542,6 +542,12 @@ ${docSection}
                               <span className="text-slate-500">Freteiro:</span>
                               <span className="font-bold text-emerald-400">{formatMoney(freteReal)}</span>
                             </div>
+                            {Number(f.outros_descontos || 0) > 0 && (
+                              <div className="text-rose-300 flex justify-end items-center gap-1" title={f.motivo_desconto ? `Motivo: ${f.motivo_desconto}` : 'Abatimento / Desconto'}>
+                                <span className="text-rose-400/70">Desc:</span>
+                                <span className="font-bold text-rose-400">-{formatMoney(f.outros_descontos)}</span>
+                              </div>
+                            )}
                             {valorComissao > 0 && (
                               <div className="text-purple-300 flex justify-end items-center gap-1" title={f.destinatario_comissao_nome || 'Comissão'}>
                                 <span className="text-slate-500">Comissão:</span>
@@ -561,6 +567,12 @@ ${docSection}
                               <span className="text-slate-500">Freteiro:</span>
                               <span className="font-bold text-indigo-300">{formatMoney(freteReal)}</span>
                             </div>
+                            {Number(f.outros_descontos || 0) > 0 && (
+                              <div className="text-rose-300 flex justify-end items-center gap-1" title={f.motivo_desconto ? `Motivo: ${f.motivo_desconto}` : 'Abatimento / Desconto'}>
+                                <span className="text-rose-400/70">Desc:</span>
+                                <span className="font-bold text-rose-400">-{formatMoney(f.outros_descontos)}</span>
+                              </div>
+                            )}
                             <div className="text-emerald-400 flex justify-end items-center gap-1">
                               <span className="text-slate-500">Lucro:</span>
                               <span className="font-bold">{formatMoney(valorComissao)}</span>

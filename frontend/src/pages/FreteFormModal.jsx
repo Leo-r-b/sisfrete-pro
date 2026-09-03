@@ -20,7 +20,10 @@ import {
   Copy,
   Check,
   ShieldCheck,
-  ArrowRight
+  ArrowRight,
+  Scissors,
+  Percent,
+  Tag
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -114,6 +117,7 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
     valor_pedagio: '',
     valor_combustivel: '',
     outros_descontos: '',
+    motivo_desconto: '',
     valor_acrescimos: '',
 
     status_frete: 'em_transito',
@@ -197,6 +201,7 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
         valor_pedagio: freteEdit.valor_pedagio || '',
         valor_combustivel: freteEdit.valor_combustivel || '',
         outros_descontos: freteEdit.outros_descontos || '',
+        motivo_desconto: freteEdit.motivo_desconto || '',
         valor_acrescimos: freteEdit.valor_acrescimos || '',
         adiantamento_ja_pago: false,
       });
@@ -256,6 +261,7 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
         valor_pedagio: '',
         valor_combustivel: '',
         outros_descontos: '',
+        motivo_desconto: '',
         valor_acrescimos: '',
         status_frete: 'em_transito',
         data_emissao: new Date().toISOString().substring(0, 10),
@@ -1363,6 +1369,84 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
 
               </div>
 
+              {/* CARD DE DESCONTO / ABATIMENTO DE FRETE (Roubo de carga, falta, avaria) */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-rose-500/40 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-rose-400 uppercase flex items-center gap-1.5">
+                    <Scissors className="h-4 w-4" />
+                    <span>Desconto / Abatimento de Frete (Roubo de Carga / Quebra / Avaria)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Deduzido diretamente do saldo líquido a pagar ao freteiro
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                      Valor do Desconto (R$):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-rose-400">R$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="outros_descontos"
+                        value={formData.outros_descontos}
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        className="w-full bg-slate-900 border border-rose-500/50 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm focus:border-rose-400 focus:outline-none shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                      Motivo do Desconto / Abatimento:
+                    </label>
+                    <input
+                      type="text"
+                      name="motivo_desconto"
+                      value={formData.motivo_desconto}
+                      onChange={handleChange}
+                      placeholder="Ex: Roubo de carga de óleo, quebra excessiva, avaria de tanque..."
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-rose-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Sugestões Rápidas de Motivos */}
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400 pt-0.5">
+                  <span className="text-slate-500">Motivos frequentes:</span>
+                  {[
+                    'Roubo de Carga / Óleo',
+                    'Falta / Quebra de Mercadoria',
+                    'Avaria / Derramamento',
+                    'Atraso / Multa Operacional'
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, motivo_desconto: preset }))}
+                      className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-rose-950/50 hover:text-rose-300 text-slate-300 border border-slate-700 transition cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+
+                {parseFloat(formData.outros_descontos || 0) > 0 && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/30 border border-rose-500/30 flex items-center justify-between text-xs font-mono flex-wrap gap-2">
+                    <span className="text-slate-300">
+                      Frete Contratado: <strong className="text-emerald-400">{formatMoney(valorFreteReal)}</strong> - Abatimento: <strong className="text-rose-400">-{formatMoney(parseFloat(formData.outros_descontos))}</strong>
+                    </span>
+                    <span className="text-white font-bold bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">
+                      Líquido a Pagar ao Freteiro: <strong className="text-emerald-300">{formatMoney(Math.max(0, valorFreteReal - parseFloat(formData.outros_descontos)))}</strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* CARD DE CONFERÊNCIA MATEMÁTICA EM TEMPO REAL */}
               {(() => {
                 const somaRateio = Number((valorFreteReal + valorComissaoAgenciamento + valorRepasseAgenciamento).toFixed(2));
@@ -1527,6 +1611,64 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
                   </p>
                 </div>
 
+              </div>
+
+              {/* CARD DE DESCONTO / ABATIMENTO DE FRETE (Roubo / Avaria) */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-rose-500/40 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-rose-400 uppercase flex items-center gap-1.5">
+                    <Scissors className="h-4 w-4" />
+                    <span>Desconto / Abatimento de Frete (Roubo de Carga / Quebra / Avaria)</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Deduzido diretamente do saldo líquido a pagar ao freteiro
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                      Valor do Desconto (R$):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-rose-400">R$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="outros_descontos"
+                        value={formData.outros_descontos}
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        className="w-full bg-slate-900 border border-rose-500/50 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm focus:border-rose-400 focus:outline-none shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] text-slate-400 font-semibold mb-1">
+                      Motivo do Desconto / Abatimento:
+                    </label>
+                    <input
+                      type="text"
+                      name="motivo_desconto"
+                      value={formData.motivo_desconto}
+                      onChange={handleChange}
+                      placeholder="Ex: Roubo de carga de óleo, quebra excessiva, avaria de tanque..."
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-rose-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {parseFloat(formData.outros_descontos || 0) > 0 && (
+                  <div className="p-2 rounded-lg bg-rose-950/30 border border-rose-500/30 flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-300">
+                      Frete Contratado: <strong className="text-emerald-400">{formatMoney(valorFreteReal)}</strong> - Abatimento: <strong className="text-rose-400">-{formatMoney(parseFloat(formData.outros_descontos))}</strong>
+                    </span>
+                    <span className="text-white font-bold">
+                      Líquido Freteiro: <strong className="text-emerald-300">{formatMoney(Math.max(0, valorFreteReal - parseFloat(formData.outros_descontos)))}</strong>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* CARD DE CONFERÊNCIA MATEMÁTICA EM TEMPO REAL */}

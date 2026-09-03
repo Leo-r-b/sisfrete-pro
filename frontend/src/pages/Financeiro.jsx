@@ -39,7 +39,9 @@ import {
   TrendingUp,
   Plus,
   PackageCheck,
-  Globe
+  Globe,
+  Eye,
+  Scissors
 } from 'lucide-react';
 import api from '../services/api';
 import { StatusPagamentoBadge, StatusRecebimentoBadge, StatusFreteBadge } from '../components/StatusBadge';
@@ -98,6 +100,37 @@ export default function Financeiro({ onOpenLancamento, onOpenRecibo }) {
   const [whatsAppModalFinanceiro, setWhatsAppModalFinanceiro] = useState(null);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [whatsappTelefone, setWhatsappTelefone] = useState('');
+
+  // Modal de Aplicar / Editar Desconto de Frete (Abatimento por Roubo / Quebra / Avaria)
+  const [modalDescontoTitulo, setModalDescontoTitulo] = useState(null);
+  const [valorDescontoModal, setValorDescontoModal] = useState('');
+  const [motivoDescontoModal, setMotivoDescontoModal] = useState('');
+  const [salvandoDesconto, setSalvandoDesconto] = useState(false);
+
+  const handleOpenModalDesconto = (titulo) => {
+    setModalDescontoTitulo(titulo);
+    setValorDescontoModal(titulo.valor_desconto > 0 ? String(titulo.valor_desconto) : '');
+    setMotivoDescontoModal(titulo.motivo_desconto || '');
+  };
+
+  const handleSalvarDesconto = async (e) => {
+    if (e) e.preventDefault();
+    if (!modalDescontoTitulo) return;
+    setSalvandoDesconto(true);
+    try {
+      await api.put(`/financeiro/titulos/${modalDescontoTitulo.id}/desconto`, {
+        valor_desconto: parseFloat(valorDescontoModal || 0),
+        motivo_desconto: motivoDescontoModal
+      });
+      setModalDescontoTitulo(null);
+      await fetchTitulos();
+      await fetchKpis();
+    } catch (err) {
+      alert('Erro ao registrar desconto: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSalvandoDesconto(false);
+    }
+  };
 
   // Controle de expansão de histórico de baixas parciais
   const [expandedTituloIds, setExpandedTituloIds] = useState(new Set());
@@ -514,9 +547,11 @@ _Favor enviar o comprovante de pagamento após a transferência._
   const renderTituloRow = (t, isInsideFreteGroup, isLastInGroup, isMultiplasParcelas) => {
     const valorTotal = Number(t.valor || 0);
     const valorPago = Number(t.valor_pago || 0);
-    const saldoPendente = Math.max(0, Number((valorTotal - valorPago).toFixed(2)));
+    const valorDesconto = Number(t.valor_desconto || 0);
+    const motivoDesconto = t.motivo_desconto || '';
+    const saldoPendente = Math.max(0, Number((valorTotal - valorPago - valorDesconto).toFixed(2)));
 
-    const isQuitado = (t.status === 'pago' || t.status === 'recebido') || (valorPago >= valorTotal - 0.01 && valorTotal > 0);
+    const isQuitado = (t.status === 'pago' || t.status === 'recebido') || (saldoPendente <= 0.01 && valorTotal > 0);
     const isParcial = !isQuitado && valorPago > 0;
     const isPendente = !isQuitado && !isParcial;
     const isVencido = !isQuitado && t.data_vencimento && t.data_vencimento < new Date().toISOString().slice(0, 10);
@@ -660,9 +695,9 @@ _Favor enviar o comprovante de pagamento após a transferência._
             {isVencido && <span className="text-[9px] text-rose-400 font-bold block">Vencido</span>}
           </td>
 
-          {/* Valor */}
+          {/* Valor Bruto do Título */}
           <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
-            <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-rose-400'}`}>
+            <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-slate-200'}`}>
               {formatMoney(valorTotal)}
             </span>
             {t.is_triangular && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
@@ -670,100 +705,154 @@ _Favor enviar o comprovante de pagamento após a transferência._
                 (CT-es: {formatMoney(t.valor_cte_1)} | {formatMoney(t.valor_cte_2)})
               </span>
             )}
-            {valorPago > 0 && !isQuitado && (
-              <span className="text-[10px] text-emerald-400 block font-medium">Pago: {formatMoney(valorPago)}</span>
-            )}
-            {isParcial && saldoPendente > 0 && (
-              <span className="text-[10px] text-amber-400 block font-bold">Saldo: {formatMoney(saldoPendente)}</span>
+          </td>
+
+          {/* Desconto / Abatimento de Frete */}
+          <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
+            {valorDesconto > 0 ? (
+              <div 
+                className="cursor-pointer group text-right" 
+                onClick={() => handleOpenModalDesconto(t)} 
+                title={`Clique para editar desconto. Motivo: ${motivoDesconto || 'Não especificado'}`}
+              >
+                <span className="font-bold text-xs text-rose-400 group-hover:underline block">
+                  -{formatMoney(valorDesconto)}
+                </span>
+                {motivoDesconto && (
+                  <span className="text-[8.5px] text-rose-300/80 truncate max-w-[110px] block ml-auto" title={motivoDesconto}>
+                    {motivoDesconto}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleOpenModalDesconto(t)}
+                className="text-slate-600 hover:text-rose-400 text-xs px-2 py-0.5 rounded transition cursor-pointer hover:bg-rose-500/10 font-bold"
+                title="Aplicar desconto / abatimento (Roubo, avaria, quebra)"
+              >
+                -
+              </button>
             )}
           </td>
 
-          {/* Status com Botão de Extrato de Baixas */}
+          {/* Pago e Saldo Restante */}
+          <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
+            {valorPago > 0 && !isQuitado && (
+              <span className="text-[10px] text-emerald-400 block font-medium">Pago: {formatMoney(valorPago)}</span>
+            )}
+            <span className={`font-bold text-xs ${saldoPendente <= 0.01 ? 'text-slate-500' : isParcial ? 'text-amber-400' : 'text-slate-300'}`}>
+              {saldoPendente <= 0.01 ? 'R$ 0,00' : formatMoney(saldoPendente)}
+            </span>
+          </td>
+
+          {/* Status Geral Limpo */}
           <td className="px-3 py-2.5 text-center whitespace-nowrap">
             {isQuitado ? (
-              <span className="px-2.5 py-1 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 inline-flex items-center justify-center gap-1 mx-auto">
                 <CheckCircle2 className="h-3 w-3" />
-                <span>{t.tipo === 'receber' ? 'Recebido 100%' : 'Quitado 100%'}</span>
+                <span>{t.tipo === 'receber' ? 'Recebido' : 'Quitado'}</span>
               </span>
             ) : isParcial ? (
-              <span className="px-2.5 py-1 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40 inline-flex items-center justify-center gap-1 mx-auto">
                 <Clock className="h-3 w-3" />
-                <span>Parcial ({formatMoney(valorPago)})</span>
+                <span>Parcial</span>
               </span>
             ) : (
-              <span className="px-2.5 py-1 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 flex items-center justify-center gap-1 mx-auto w-fit">
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 inline-flex items-center justify-center gap-1 mx-auto">
                 <Clock className="h-3 w-3" />
                 <span>Pendente</span>
               </span>
             )}
-
-            {/* Botão de Histórico de Baixas Parciais */}
-            <button
-              type="button"
-              onClick={() => toggleExpandTitulo(t.id)}
-              className="mt-1.5 flex items-center justify-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 mx-auto px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 transition cursor-pointer"
-              title="Ver histórico detalhado de parcelas e pagamentos parciais"
-            >
-              {expandedTituloIds.has(t.id) ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              <span>{t.quantidade_baixas > 0 ? `${t.quantidade_baixas} Baixa(s)` : 'Ver Extrato'}</span>
-            </button>
           </td>
 
-          {/* Ações Rápidas: Baixar, Recibo, WhatsApp, Excluir */}
+          {/* Ações Rápidas Ultra Compactas em Linha Única */}
           <td className="px-3 py-2.5 text-center whitespace-nowrap">
-            <div className="flex items-center justify-center gap-1.5 flex-wrap">
+            <div className="flex items-center justify-center gap-1 flex-nowrap">
               
-              {/* Botão de Baixa / Pagamento */}
+              {/* 1. Quitar / Pagar Saldo (Cifrão) */}
               {!isQuitado ? (
                 <button
+                  type="button"
                   onClick={() => handleOpenBaixa(t)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                  className={`p-1.5 rounded-lg text-white transition cursor-pointer shadow-sm ${
                     isParcial 
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-950' 
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
+                      ? 'bg-indigo-600 hover:bg-indigo-500 border border-indigo-400' 
+                      : 'bg-emerald-600 hover:bg-emerald-500 border border-emerald-400'
                   }`}
-                  title="Registrar Pagamento / Baixar Título"
+                  title={isParcial ? `Pagar Saldo Restante: ${formatMoney(saldoPendente)}` : (t.tipo === 'receber' ? `Receber Valor: ${formatMoney(saldoPendente)}` : `Quitar Título: ${formatMoney(saldoPendente)}`)}
                 >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  <span>{isParcial ? `Pagar Saldo (${formatMoney(saldoPendente)})` : (t.tipo === 'receber' ? 'Receber' : 'Quitar')}</span>
+                  <DollarSign className="h-3.5 w-3.5 stroke-[2.5]" />
                 </button>
               ) : (
-                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
-                  <Check className="h-3.5 w-3.5" />
-                  <span>Quitado</span>
+                <span 
+                  className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center justify-center cursor-default"
+                  title="Título 100% Quitado"
+                >
+                  <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                 </span>
               )}
 
-              {/* Botão Recibo Oficial */}
+              {/* 2. Ver Extrato de Baixas (Olho) */}
+              <button
+                type="button"
+                onClick={() => toggleExpandTitulo(t.id)}
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                  expandedTituloIds.has(t.id)
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                    : 'bg-slate-800 text-blue-400 border-slate-700 hover:bg-blue-600 hover:border-blue-600 hover:text-white'
+                }`}
+                title={t.quantidade_baixas > 0 ? `Ver Extrato de Baixas (${t.quantidade_baixas} baixa(s))` : 'Ver Extrato de Baixas'}
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
+
+              {/* 3. Imprimir Recibo Oficial (Impressora) */}
               {t.frete_id && onOpenRecibo && (
                 <button
+                  type="button"
                   onClick={() => handleOpenReciboFromTitulo(t)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[11px] font-bold"
-                  title="Imprimir Recibo Oficial (Visão Empresa ou Motorista)"
+                  className="p-1.5 rounded-lg bg-slate-800 text-amber-400 border border-slate-700 hover:bg-amber-600 hover:border-amber-600 hover:text-white transition cursor-pointer shadow-sm"
+                  title="Imprimir Recibo Oficial"
                 >
                   <Printer className="h-3.5 w-3.5" />
-                  <span>Recibo</span>
                 </button>
               )}
 
-              {/* Botão WhatsApp Cobrança / PIX */}
+              {/* 4. Desconto / Abatimento de Carga (Tesoura) */}
               <button
+                type="button"
+                onClick={() => handleOpenModalDesconto(t)}
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                  valorDesconto > 0
+                    ? 'bg-rose-600/30 text-rose-300 border-rose-500/50 hover:bg-rose-600 hover:text-white'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-rose-600 hover:border-rose-600 hover:text-white'
+                }`}
+                title={valorDesconto > 0 ? `Desconto Aplicado: -${formatMoney(valorDesconto)} (${motivoDesconto || 'Editar'})` : 'Aplicar Desconto de Carga (Roubo / Avaria)'}
+              >
+                <Scissors className="h-3.5 w-3.5" />
+              </button>
+
+              {/* 5. WhatsApp */}
+              <button
+                type="button"
                 onClick={() => {
                   setWhatsAppModalFinanceiro(t);
                   setCopiedWhatsApp(false);
                   setWhatsappTelefone('');
                 }}
-                className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 transition cursor-pointer shrink-0"
-                title={t.tipo === 'receber' ? 'Enviar cobrança com chave PIX no WhatsApp' : 'Enviar comprovante / acerto no WhatsApp'}
+                className="p-1.5 rounded-lg bg-slate-800 text-emerald-400 border border-slate-700 hover:bg-emerald-600 hover:border-emerald-600 hover:text-white transition cursor-pointer shadow-sm"
+                title={t.tipo === 'receber' ? 'Enviar cobrança no WhatsApp' : 'Enviar comprovante / extrato no WhatsApp'}
               >
                 <MessageCircle className="h-3.5 w-3.5" />
               </button>
 
-              {/* Botão Excluir */}
+              {/* 6. Excluir */}
               <button
+                type="button"
                 onClick={() => setTituloParaExcluir(t)}
-                className="p-1 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/30 transition cursor-pointer shrink-0"
-                title="Excluir Lançamento"
+                className="p-1.5 rounded-lg bg-slate-800 text-rose-400 border border-slate-700 hover:bg-rose-600 hover:border-rose-600 hover:text-white transition cursor-pointer shadow-sm"
+                title="Excluir Lançamento Financeiro"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -775,7 +864,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
         {/* SUB-LINHA EXPANSÍVEL: HISTÓRICO COMPLETO DE BAIXAS PARCIAIS */}
         {expandedTituloIds.has(t.id) && (
           <tr key={`extrato_${t.id}`} className="bg-slate-950/90 border-b border-slate-800">
-            <td colSpan={7} className="px-4 py-4 sm:px-6">
+            <td colSpan={9} className="px-4 py-4 sm:px-6">
               <div className="rounded-2xl bg-slate-900/90 border border-slate-700/80 p-4 space-y-3.5 shadow-2xl">
                 {/* Header do Accordion */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -1358,7 +1447,9 @@ _Favor enviar o comprovante de pagamento após a transferência._
                   <th className="px-3 py-2.5">Categoria (Plano de Contas)</th>
                   <th className="px-3 py-2.5">Favorecido / Tomador</th>
                   <th className="px-3 py-2.5">Vencimento</th>
-                  <th className="px-3 py-2.5 text-right">Valor Total / Pago</th>
+                  <th className="px-3 py-2.5 text-right font-mono">Valor Título</th>
+                  <th className="px-3 py-2.5 text-right font-mono text-rose-400">Desconto</th>
+                  <th className="px-3 py-2.5 text-right font-mono">Pago / Saldo</th>
                   <th className="px-3 py-2.5 text-center">Status</th>
                   <th className="px-3 py-2.5 text-center">Ações</th>
                 </tr>
@@ -1366,7 +1457,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
               <tbody className="divide-y divide-slate-800/60">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                         <span>Carregando títulos financeiros...</span>
@@ -1378,7 +1469,8 @@ _Favor enviar o comprovante de pagamento após a transferência._
                     if (grupo.is_frete) {
                       const totalValorGrupo = grupo.titulos.reduce((acc, item) => acc + Number(item.valor || 0), 0);
                       const totalPagoGrupo = grupo.titulos.reduce((acc, item) => acc + Number(item.valor_pago || 0), 0);
-                      const saldoPendenteGrupo = Math.max(0, Number((totalValorGrupo - totalPagoGrupo).toFixed(2)));
+                      const totalDescontoGrupo = grupo.titulos.reduce((acc, item) => acc + Number(item.valor_desconto || 0), 0);
+                      const saldoPendenteGrupo = Math.max(0, Number((totalValorGrupo - totalPagoGrupo - totalDescontoGrupo).toFixed(2)));
                       const isGrupoQuitado = saldoPendenteGrupo <= 0.01 && totalValorGrupo > 0;
                       const isGrupoParcial = !isGrupoQuitado && totalPagoGrupo > 0;
                       const isMultiplasParcelas = grupo.titulos.length > 1;
@@ -1387,7 +1479,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                         <React.Fragment key={grupo.key}>
                           {/* CABEÇALHO DO BLOCO DA OPERAÇÃO / CT-e (Moldura com linha superior forte e união visual) */}
                           <tr className={`bg-slate-800/95 border-t-2 border-slate-600 border-l-4 ${accentBorderColor}`}>
-                            <td colSpan={7} className="px-3 py-2 text-xs">
+                            <td colSpan={9} className="px-3 py-2 text-xs">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 border ${
@@ -1430,6 +1522,11 @@ _Favor enviar o comprovante de pagamento após a transferência._
                                       {formatMoney(totalValorGrupo)}
                                     </span>
                                   </div>
+                                  {totalDescontoGrupo > 0 && (
+                                    <span className="text-[10px] text-rose-400 font-mono font-bold" title="Total de descontos abatidos do freteiro">
+                                      (Desc: -{formatMoney(totalDescontoGrupo)})
+                                    </span>
+                                  )}
                                   {totalPagoGrupo > 0 && !isGrupoQuitado && (
                                     <span className="text-[10px] text-slate-400 font-mono">
                                       (Pago: {formatMoney(totalPagoGrupo)})
@@ -1447,12 +1544,13 @@ _Favor enviar o comprovante de pagamento após a transferência._
 
                                   {onOpenRecibo && (
                                     <button
+                                      type="button"
                                       onClick={() => handleOpenReciboFromTitulo(grupo.titulos[0])}
-                                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[10px] font-bold"
-                                      title="Imprimir Recibo Oficial da Operação Completa"
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[10.5px] font-bold"
+                                      title="Imprimir Recibo Geral da Operação"
                                     >
                                       <Printer className="h-3 w-3" />
-                                      <span>Recibo da Operação</span>
+                                      <span>Recibo Geral</span>
                                     </button>
                                   )}
                                 </div>
@@ -1477,7 +1575,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                   })
                 ) : (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
                       Nenhum título encontrado com os filtros selecionados.
                     </td>
                   </tr>
@@ -1961,6 +2059,174 @@ _Favor enviar o comprovante de pagamento após a transferência._
                 <span>{isExcluindo ? 'Excluindo...' : 'Sim, Excluir Lançamento'}</span>
               </button>
             </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE APLICAR / EDITAR DESCONTO DE FRETE (ROUBO DE CARGA, QUEBRA, AVARIA) */}
+      {modalDescontoTitulo && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setModalDescontoTitulo(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn"
+        >
+          <div className="w-full max-w-lg bg-slate-950 border border-rose-500/50 rounded-3xl shadow-2xl overflow-hidden text-slate-100 flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/80">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-600/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+                  <Scissors className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    Desconto de Frete (Abatimento de Carga)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Abatimento por roubo de carga, falta de óleo ou avaria
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalDescontoTitulo(null)}
+                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSalvarDesconto} className="p-6 space-y-4 text-xs">
+              
+              {/* Informações do Título / Operação */}
+              <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+                <p><strong className="text-white">Documento:</strong> {modalDescontoTitulo.descricao}</p>
+                <p><strong className="text-white">Favorecido:</strong> {modalDescontoTitulo.pessoa_nome || '-'}</p>
+                <p><strong className="text-white">Valor do Título:</strong> {formatMoney(modalDescontoTitulo.valor)}</p>
+                {modalDescontoTitulo.valor_pago > 0 && (
+                  <p><strong className="text-emerald-400">Total Já Pago:</strong> {formatMoney(modalDescontoTitulo.valor_pago)}</p>
+                )}
+              </div>
+
+              {/* Input de Valor do Desconto */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1 text-xs">
+                  Valor do Desconto / Abatimento (R$) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-rose-400 font-mono text-sm">
+                    R$
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    min="0"
+                    value={valorDescontoModal}
+                    onChange={(e) => setValorDescontoModal(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-slate-900 border border-rose-500/50 rounded-xl pl-11 pr-3 py-2.5 text-white font-mono font-bold text-base focus:border-rose-400 focus:outline-none shadow-inner"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Este valor será subtraído do saldo a pagar ao freteiro. Digite 0 para remover o desconto.
+                </p>
+              </div>
+
+              {/* Motivo do Desconto */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1 text-xs">
+                  Motivo do Desconto:
+                </label>
+                <input
+                  type="text"
+                  value={motivoDescontoModal}
+                  onChange={(e) => setMotivoDescontoModal(e.target.value)}
+                  placeholder="Ex: Roubo de carga de óleo na estrada, falta de produto, quebra excessiva..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:border-rose-400 focus:outline-none"
+                />
+              </div>
+
+              {/* Atalhos Rápidos de Motivo */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10.5px] text-slate-400 block font-medium">Motivos frequentes no ramo de óleo/granel:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Roubo / Furto de Carga (Óleo)',
+                    'Quebra / Falta de Mercadoria',
+                    'Avaria / Derramamento de Produto',
+                    'Multa / Atraso de Descarga'
+                  ].map((motivo) => (
+                    <button
+                      key={motivo}
+                      type="button"
+                      onClick={() => setMotivoDescontoModal(motivo)}
+                      className="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-rose-950/60 hover:text-rose-300 text-slate-300 border border-slate-800 transition cursor-pointer text-[10.5px]"
+                    >
+                      {motivo}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Simulação em Tempo Real */}
+              {(() => {
+                const totalTit = Number(modalDescontoTitulo.valor || 0);
+                const desc = parseFloat(valorDescontoModal || 0);
+                const pago = Number(modalDescontoTitulo.valor_pago || 0);
+                const novoSaldo = Math.max(0, Number((totalTit - pago - desc).toFixed(2)));
+
+                return (
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 text-xs font-mono">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Valor Original:</span>
+                      <strong className="text-white">{formatMoney(totalTit)}</strong>
+                    </div>
+                    {desc > 0 && (
+                      <div className="flex justify-between text-rose-400">
+                        <span>Desconto Aplicado:</span>
+                        <strong>-{formatMoney(desc)}</strong>
+                      </div>
+                    )}
+                    {pago > 0 && (
+                      <div className="flex justify-between text-emerald-400">
+                        <span>Total Pago:</span>
+                        <strong>{formatMoney(pago)}</strong>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-amber-400 font-bold pt-1 border-t border-slate-800">
+                      <span>Novo Saldo Devedor:</span>
+                      <strong className="text-sm">{formatMoney(novoSaldo)}</strong>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Botões do Rodapé */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalDescontoTitulo(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={salvandoDesconto}
+                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/30 transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Scissors className="h-4 w-4" />
+                  <span>{salvandoDesconto ? 'Salvando...' : 'Confirmar e Salvar Desconto'}</span>
+                </button>
+              </div>
+
+            </form>
 
           </div>
         </div>

@@ -79,6 +79,7 @@ router.get('/financeiro/titulos', authMiddleware, financeiroController.listTitul
 router.post('/financeiro/titulos', authMiddleware, financeiroController.createTitulo);
 router.put('/financeiro/titulos/:id', authMiddleware, financeiroController.updateTitulo);
 router.post('/financeiro/titulos/:id/baixar', authMiddleware, financeiroController.baixarTitulo);
+router.put('/financeiro/titulos/:id/desconto', authMiddleware, financeiroController.salvarDescontoTitulo);
 router.delete('/financeiro/baixas/:id', authMiddleware, requireRole(['admin', 'super_admin']), financeiroController.deleteBaixa);
 router.delete('/financeiro/titulos/:id', authMiddleware, requireRole(['admin', 'super_admin']), financeiroController.deleteTitulo);
 router.get('/financeiro/contas-pagar', authMiddleware, financeiroController.listContasPagar);

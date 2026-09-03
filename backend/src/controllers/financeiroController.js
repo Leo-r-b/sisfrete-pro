@@ -342,17 +342,21 @@ const listTitulos = (req, res) => {
 
       const baixas = baixasPorTituloId.get(t.id) || [];
       const valorTotal = Number(t.valor || 0);
+      const valorDesconto = Number(t.valor_desconto || 0);
+      const motivoDesconto = t.motivo_desconto || '';
       const valorPagoCalculado = baixas.length > 0 
         ? Number(baixas.reduce((acc, b) => acc + Number(b.valor || 0), 0).toFixed(2))
         : Number(t.valor_pago || 0);
-      const saldoPendente = Math.max(0, Number((valorTotal - valorPagoCalculado).toFixed(2)));
-      const pctPago = valorTotal > 0 ? Number(((valorPagoCalculado / valorTotal) * 100).toFixed(1)) : 0;
+      const saldoPendente = Math.max(0, Number((valorTotal - valorPagoCalculado - valorDesconto).toFixed(2)));
+      const pctPago = valorTotal > 0 ? Number((((valorPagoCalculado + valorDesconto) / valorTotal) * 100).toFixed(1)) : 0;
       const statusCalculado = saldoPendente <= 0.01 ? (t.tipo === 'receber' ? 'recebido' : 'pago') : (valorPagoCalculado > 0 ? 'parcial' : (t.status || 'pendente'));
 
       titulos.push({
         ...t,
         origem: t.frete_id ? 'frete_cte' : (t.origem || 'operacional_fixo'),
         is_frete: Boolean(t.frete_id),
+        valor_desconto: valorDesconto,
+        motivo_desconto: motivoDesconto,
         valor_pago: valorPagoCalculado,
         saldo_pendente: saldoPendente,
         percentual_pago: pctPago,
@@ -457,10 +461,14 @@ const listTitulos = (req, res) => {
             const valorFiscalCte = temComplementoPorFora ? vTotalReceber : valorTotalFreteiro;
             const valorComplementoPorFora = temComplementoPorFora ? Number((valorTotalFreteiro - vTotalReceber).toFixed(2)) : 0;
 
+            const valorDescontoFreteiro = Number(f.outros_descontos || 0);
+            const motivoDescontoFreteiro = f.motivo_desconto || '';
+
             if (temComplementoPorFora) {
               // 2.2.A Parcela 1: Freteiro coberto pelo CT-e Fiscal
               const pagoCte = Math.min(valorPagoFreteiro, valorFiscalCte);
               const quitadoCte = isQuitadoFreteiro || pagoCte >= valorFiscalCte - 0.01;
+              const saldoPendenteCte = Math.max(0, Number((valorFiscalCte - (quitadoCte ? valorFiscalCte : pagoCte) - valorDescontoFreteiro).toFixed(2)));
 
               titulos.push({
                 id: `frete_pag_${f.id}`,
@@ -484,10 +492,13 @@ const listTitulos = (req, res) => {
                 motorista_nome: f.motorista_nome,
                 favorecido_freteiro_nome: f.favorecido_freteiro_nome,
                 valor: valorFiscalCte,
+                valor_desconto: valorDescontoFreteiro,
+                motivo_desconto: motivoDescontoFreteiro,
                 valor_pago: quitadoCte ? valorFiscalCte : pagoCte,
+                saldo_pendente: saldoPendenteCte,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
-                status: quitadoCte ? 'pago' : (pagoCte > 0 ? 'parcial' : 'pendente'),
+                status: (quitadoCte || saldoPendenteCte <= 0.01) ? 'pago' : (pagoCte > 0 ? 'parcial' : 'pendente'),
                 forma_pagamento: 'PIX',
                 is_frete: true,
                 is_triangular: isTriangular
@@ -496,6 +507,7 @@ const listTitulos = (req, res) => {
               // 2.2.B Parcela 2: Pagamento Complementar ("Por Fora")
               const pagoComp = Math.max(0, Number((valorPagoFreteiro - valorFiscalCte).toFixed(2)));
               const quitadoComp = isQuitadoFreteiro || pagoComp >= valorComplementoPorFora - 0.01;
+              const saldoPendenteComp = Math.max(0, Number((valorComplementoPorFora - (quitadoComp ? valorComplementoPorFora : pagoComp)).toFixed(2)));
 
               titulos.push({
                 id: `frete_pag_comp_${f.id}`,
@@ -519,7 +531,10 @@ const listTitulos = (req, res) => {
                 motorista_nome: f.motorista_nome,
                 favorecido_freteiro_nome: f.favorecido_freteiro_nome,
                 valor: valorComplementoPorFora,
+                valor_desconto: 0,
+                motivo_desconto: '',
                 valor_pago: quitadoComp ? valorComplementoPorFora : pagoComp,
+                saldo_pendente: saldoPendenteComp,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
                 status: quitadoComp ? 'pago' : (pagoComp > 0 ? 'parcial' : 'pendente'),
@@ -532,6 +547,7 @@ const listTitulos = (req, res) => {
               const descFreteiro = isTriangular && f.numero_cte_2
                 ? `Freteiro CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2} (${f.placa_veiculo || 'S/N'})`
                 : `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.placa_veiculo || 'S/N'})`;
+              const saldoPendenteUnico = Math.max(0, Number((valorTotalFreteiro - (isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro) - valorDescontoFreteiro).toFixed(2)));
 
               titulos.push({
                 id: `frete_pag_${f.id}`,
@@ -555,10 +571,13 @@ const listTitulos = (req, res) => {
                 motorista_nome: f.motorista_nome,
                 favorecido_freteiro_nome: f.favorecido_freteiro_nome,
                 valor: valorTotalFreteiro,
+                valor_desconto: valorDescontoFreteiro,
+                motivo_desconto: motivoDescontoFreteiro,
                 valor_pago: isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro,
+                saldo_pendente: saldoPendenteUnico,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
-                status: isQuitadoFreteiro ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
+                status: (isQuitadoFreteiro || saldoPendenteUnico <= 0.01) ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
                 forma_pagamento: 'PIX',
                 is_frete: true,
                 is_triangular: isTriangular
@@ -1155,6 +1174,60 @@ const atualizarStatusRecebimento = (req, res) => {
   }
 };
 
+/**
+ * Aplicar / Atualizar Desconto de Frete ou Título (Roubo de carga, avaria, quebra)
+ */
+const salvarDescontoTitulo = (req, res) => {
+  try {
+    const { id } = req.params;
+    const { valor_desconto = 0, motivo_desconto = '' } = req.body;
+    const empresaId = req.empresaId || req.user?.empresa_id || 1;
+    const empIdNum = Number(empresaId);
+    const empIdStr = String(empresaId);
+    const descNum = Number(parseFloat(valor_desconto || 0).toFixed(2));
+    const motivoStr = String(motivo_desconto || '').trim();
+
+    if (String(id).startsWith('frete_')) {
+      const freteId = Number(String(id).replace('frete_pag_comp_', '').replace('frete_pag_', '').replace('frete_rec_', '').replace('frete_comissao_', '').replace('frete_repasse_', ''));
+      if (!freteId || isNaN(freteId)) return res.status(400).json({ error: 'ID de frete inválido.' });
+
+      db.prepare(`
+        UPDATE fretes 
+        SET outros_descontos = ?, motivo_desconto = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)
+      `).run(descNum, motivoStr, freteId, empIdNum, empIdStr);
+
+      return res.json({ 
+        success: true, 
+        message: 'Desconto de frete registrado com sucesso!', 
+        frete_id: freteId, 
+        valor_desconto: descNum, 
+        motivo_desconto: motivoStr 
+      });
+    } else {
+      const tituloId = Number(id);
+      if (!tituloId || isNaN(tituloId)) return res.status(400).json({ error: 'ID de título inválido.' });
+
+      db.prepare(`
+        UPDATE financeiro_titulos 
+        SET valor_desconto = ?, motivo_desconto = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)
+      `).run(descNum, motivoStr, tituloId, empIdNum, empIdStr);
+
+      return res.json({ 
+        success: true, 
+        message: 'Desconto do título registrado com sucesso!', 
+        titulo_id: tituloId, 
+        valor_desconto: descNum, 
+        motivo_desconto: motivoStr 
+      });
+    }
+  } catch (err) {
+    console.error('Erro ao registrar desconto:', err);
+    return res.status(500).json({ error: 'Erro ao registrar desconto: ' + err.message });
+  }
+};
+
 module.exports = {
   getPlanoContas,
   getDashboardKPIs,
@@ -1167,5 +1240,6 @@ module.exports = {
   listContasPagar,
   listContasReceber,
   lancarPagamentoMotorista,
-  atualizarStatusRecebimento
+  atualizarStatusRecebimento,
+  salvarDescontoTitulo
 };

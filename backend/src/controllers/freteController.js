@@ -442,7 +442,7 @@ const createFrete = (req, res) => {
         valor_frete_real, percentual_comissao, valor_repasse, status_repasse, data_repasse, comprovante_repasse,
         favorecido_freteiro_nome, destinatario_comissao_nome, destinatario_comissao_doc, status_comissao, data_comissao_paga, comprovante_comissao, destinatario_repasse_nome, destinatario_repasse_doc,
         valor_frete_venda, valor_frete_compra, valor_comissao, percentual_margem,
-        percentual_adiantamento, valor_adiantamento, valor_pedagio, valor_combustivel, outros_descontos, valor_acrescimos, valor_saldo_motorista,
+        percentual_adiantamento, valor_adiantamento, valor_pedagio, valor_combustivel, outros_descontos, motivo_desconto, valor_acrescimos, valor_saldo_motorista,
         status_frete, status_pagamento_motorista, status_recebimento_cliente,
         data_previsao_entrega, data_vencimento_cliente, observacoes, xml_bruto
       ) VALUES (
@@ -461,7 +461,7 @@ const createFrete = (req, res) => {
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?
       )
@@ -539,6 +539,7 @@ const createFrete = (req, res) => {
       calc.pedagio,
       calc.combustivel,
       calc.outrosDesc,
+      data.motivo_desconto || null,
       calc.acrescimos,
       calc.saldo,
       data.status_frete || 'em_transito',
@@ -690,6 +691,7 @@ const updateFrete = (req, res) => {
         valor_pedagio = ?,
         valor_combustivel = ?,
         outros_descontos = ?,
+        motivo_desconto = ?,
         valor_acrescimos = ?,
         valor_saldo_motorista = ?,
         status_frete = ?,
@@ -771,6 +773,7 @@ const updateFrete = (req, res) => {
       calc.pedagio,
       calc.combustivel,
       calc.outrosDesc,
+      data.motivo_desconto !== undefined ? data.motivo_desconto : existing.motivo_desconto,
       calc.acrescimos,
       calc.saldo,
       data.status_frete || existing.status_frete,
