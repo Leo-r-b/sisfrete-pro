@@ -110,6 +110,8 @@ export default function ReciboModal({ frete, isOpen, onClose }) {
     ? Number(f.valor_saldo_motorista)
     : Math.max(0, freteReal - Number(f.valor_adiantamento || 0) - Number(f.valor_pedagio || 0) - Number(f.valor_combustivel || 0) - Number(f.outros_descontos || 0) + Number(f.valor_acrescimos || 0));
 
+  const valorPorFora = Math.max(0, freteReal - totalCte);
+
   const isQuitadoCliente = f.status === 'pago' || f.status === 'recebido' || f.status_recebimento_cliente === 'recebido';
 
   const getWhatsAppText = () => {
@@ -246,11 +248,18 @@ ${cteHeader}
     setActionFeedback('Gerando foto do recibo para celular...');
 
     try {
-      const dataUrl = await toPng(printRef.current, {
+      const element = printRef.current;
+      const dataUrl = await toPng(element, {
         quality: 0.98,
         pixelRatio: 3,
         backgroundColor: '#ffffff',
         cacheBust: true,
+        height: element.scrollHeight,
+        style: {
+          height: 'auto',
+          maxHeight: 'none',
+          overflow: 'visible'
+        }
       });
 
       const res = await fetch(dataUrl);
@@ -466,11 +475,11 @@ ${cteHeader}
         )}
 
         {/* Scrollable Receipt Area - FORMATO VERTICAL OTIMIZADO PARA CELULAR (MAX-W 430px) */}
-        <div className="overflow-y-auto flex-1 p-2 sm:p-4 bg-slate-950/80 flex justify-center">
+        <div className="overflow-y-auto flex-1 p-2 sm:p-4 bg-slate-950/80 flex flex-col items-center">
 
           <div
             ref={printRef}
-            className="w-full max-w-[430px] bg-white text-slate-900 rounded-2xl shadow-2xl p-4 sm:p-5 space-y-2.5 text-[11px] leading-tight border border-slate-200"
+            className="w-full max-w-[430px] h-fit bg-white text-slate-900 rounded-2xl shadow-2xl p-4 sm:p-5 space-y-2.5 text-[11px] leading-tight border border-slate-200"
             style={{ boxSizing: 'border-box' }}
           >
 
@@ -519,13 +528,24 @@ ${cteHeader}
                   {pesoTotalTon} ton
                 </span>
               </div>
-            ) : isLicencaGestao ? (
+            ) : visaoRecibo === 'motorista' ? (
+              /* Na VISÃO DO MOTORISTA: NÃO exibir rateio/comissão/repasse (conforme instrução do usuário) */
               <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between text-[10px] font-bold">
                 <div className="flex items-center gap-1.5">
-                  <Scale className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                  <span>GESTÃO DE PAGAMENTOS: RATEIO FRETEIRO + COMISSÃO + REPASSE</span>
+                  <Truck className="h-3.5 w-3.5 text-blue-700 flex-shrink-0" />
+                  <span>RECIBO DE FRETE - VIA MOTORISTA</span>
                 </div>
-                <span className="bg-blue-600 text-white px-2 py-0.5 rounded-md text-[10px] font-mono">
+                <span className="bg-blue-700 text-white px-2 py-0.5 rounded-md text-[10px] font-mono">
+                  {isTriangular ? 'Triangular' : `CT-e: ${formatMoney(totalCte)}`}
+                </span>
+              </div>
+            ) : isLicencaGestao ? (
+              <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center justify-between text-[10px] font-bold">
+                <div className="flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-indigo-700 flex-shrink-0" />
+                  <span>DEMONSTRATIVO DE CUSTOS & RATEIO DA OPERAÇÃO</span>
+                </div>
+                <span className="bg-indigo-700 text-white px-2 py-0.5 rounded-md text-[10px] font-mono">
                   CT-e Total: {formatMoney(totalCte)}
                 </span>
               </div>
@@ -533,7 +553,7 @@ ${cteHeader}
               <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-950 flex items-center justify-between text-[10px] font-bold">
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
-                  <span>AGENCIAMENTO: FRETE REAL + 5% COMISSÃO</span>
+                  <span>AGENCIAMENTO: DEMONSTRATIVO DE CUSTO & REPASSE</span>
                 </div>
                 <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-md text-[10px] font-mono">
                   CT-e: {formatMoney(totalCte)}
@@ -551,17 +571,17 @@ ${cteHeader}
               </div>
             )}
 
-            {/* Dados dos CT-es */}
+            {/* Dados dos CT-es e Parcela Por Fora / Frete Contratado */}
             <div className="grid grid-cols-2 gap-2">
 
-              {/* CT-e 1 */}
+              {/* Card 1: CT-e 1 / CT-e Fiscal */}
               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-0.5">
                 <div className="flex items-center justify-between">
                   <p className="text-slate-500 font-bold uppercase text-[9px]">
                     {isTriangular ? 'CT-e 1' : 'CT-e Fiscal'}
                   </p>
                   {f.nfe_referencia && (
-                    <span className="text-[9px] font-bold text-blue-700">{f.nfe_referencia}</span>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">{f.nfe_referencia}</span>
                   )}
                 </div>
                 <p className="font-bold text-slate-900 text-xs">Nº {f.numero_cte || 'S/N'}</p>
@@ -569,7 +589,7 @@ ${cteHeader}
                   <strong>Tomador:</strong> {f.cliente_nome || 'Cliente Tomador'}
                 </p>
                 <p className="text-slate-700 text-[10px]">
-                  <strong>Valor CT-e 1:</strong> <span className="font-bold text-slate-900">{formatMoney(v1 || totalCte)}</span>
+                  <strong>Valor CT-e:</strong> <span className="font-bold text-slate-900">{formatMoney(v1 || totalCte)}</span>
                 </p>
                 {pesoTon1 > 0 && (
                   <p className="text-slate-500 text-[9px]">
@@ -578,13 +598,13 @@ ${cteHeader}
                 )}
               </div>
 
-              {/* CT-e 2 (Triangular) ou Carga (Padrão) */}
+              {/* Card 2: Contextual (CT-e 2 se Triangular / Pagamento Por Fora na Visão Empresa / Frete Total na Visão Motorista) */}
               {isTriangular ? (
                 <div className="bg-indigo-50/50 p-2 rounded-xl border border-indigo-200 space-y-0.5">
                   <div className="flex items-center justify-between">
                     <p className="text-indigo-800 font-bold uppercase text-[9px]">CT-e 2</p>
                     {f.nfe_referencia_2 && (
-                      <span className="text-[9px] font-bold text-indigo-700">{f.nfe_referencia_2}</span>
+                      <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">{f.nfe_referencia_2}</span>
                     )}
                   </div>
                   <p className="font-bold text-slate-900 text-xs">Nº {f.numero_cte_2 || 'S/N'}</p>
@@ -600,16 +620,41 @@ ${cteHeader}
                     </p>
                   )}
                 </div>
+              ) : visaoRecibo === 'empresa' ? (
+                /* Na VISÃO EMPRESA: Exibir Parcela Complementar ("Por Fora") conforme solicitado no áudio */
+                <div className="bg-amber-50/80 p-2 rounded-xl border border-amber-200 space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-amber-800 font-bold uppercase text-[9px]">Pagamento Por Fora</p>
+                    <span className="text-[9px] font-bold text-amber-900 bg-amber-200/80 px-1.5 py-0.2 rounded border border-amber-300">
+                      Excedente
+                    </span>
+                  </div>
+                  <p className="font-bold text-amber-950 text-xs font-mono">{formatMoney(valorPorFora)}</p>
+                  <p className="text-amber-900 text-[10px]">
+                    <strong>Frete Real:</strong> <span className="font-bold">{formatMoney(freteReal)}</span>
+                  </p>
+                  <p className="text-amber-800 text-[9px] pt-0.5">
+                    {valorPorFora > 0 ? 'Diferença s/ CT-e Fiscal acordada' : 'Sem excedente por fora'}
+                  </p>
+                </div>
               ) : (
-                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-0.5">
-                  <p className="text-slate-500 font-bold uppercase text-[9px]">Carga Transportada</p>
-                  <p className="font-bold text-slate-900 text-xs">{f.tipo_carga || 'Carga Geral'}</p>
+                /* Na VISÃO MOTORISTA: Exibir Valor Total do Frete Contratado e Saldo */
+                <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-200 space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-blue-800 font-bold uppercase text-[9px]">Frete Contratado</p>
+                    <span className="text-[9px] font-bold text-blue-900 bg-blue-200/80 px-1.5 py-0.2 rounded border border-blue-300">
+                      Total Motorista
+                    </span>
+                  </div>
+                  <p className="font-bold text-blue-950 text-xs font-mono">{formatMoney(freteReal)}</p>
                   <p className="text-slate-700 text-[10px]">
-                    <strong>Tomador:</strong> {f.cliente_nome || 'N/I'}
+                    <strong>Saldo a Receber:</strong> <span className="font-bold text-emerald-800">{formatMoney(valorSaldoMotorista)}</span>
                   </p>
-                  <p className="text-slate-700 text-[10px]">
-                    <strong>Total Bruto:</strong> <span className="font-bold text-emerald-800">{formatMoney(totalCte)}</span>
-                  </p>
+                  {f.valor_adiantamento > 0 && (
+                    <p className="text-slate-500 text-[9px]">
+                      Adiantamento: {formatMoney(f.valor_adiantamento)}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -663,7 +708,7 @@ ${cteHeader}
                 <p className="text-[10px] font-bold uppercase text-slate-700 mb-1">
                   Demonstrativo do Frete ao Cliente / Tomador
                 </p>
-                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden bg-white">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[9px] uppercase">
                     <tr>
                       <th className="p-1.5">Descrição do Faturamento</th>
@@ -706,7 +751,7 @@ ${cteHeader}
                     Controle Interno
                   </span>
                 </div>
-                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden bg-white">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[9px] uppercase">
                     <tr>
                       <th className="p-1.5">Discriminação de Custo / Rateio</th>
@@ -782,7 +827,7 @@ ${cteHeader}
                     Via do Motorista
                   </span>
                 </div>
-                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-[10px] border border-slate-300 rounded-xl overflow-hidden bg-white">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-300 text-[9px] uppercase">
                     <tr>
                       <th className="p-1.5">Discriminação</th>
