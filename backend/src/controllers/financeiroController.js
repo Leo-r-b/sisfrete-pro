@@ -105,9 +105,14 @@ const getDashboardKPIs = (req, res) => {
     const totalComissaoVal = Number((fretesTotais.total_comissao || 0).toFixed(2));
     const margemMediaPct = totalVendaVal > 0 ? Number(((totalComissaoVal / totalVendaVal) * 100).toFixed(1)) : 0;
 
-    // Totalização equilibrada das receitas (CT-e recebidos e pendentes do cliente + avulsos)
-    const totalRecebidoGeral = (fretesReceitas.recebidos_1 || 0) + (fretesReceitas.recebidos_2 || 0) + (titulosStats.avulso_recebido || 0);
-    const totalAReceberGeral = (fretesReceitas.pendentes_1 || 0) + (fretesReceitas.pendentes_2 || 0) + (titulosStats.avulso_a_receber || 0);
+    // No modo Gestão de Pagamentos, a empresa é TOMADORA de serviço e apenas realiza os pagamentos (não possui receitas de CT-e a receber)
+    const totalRecebidoGeral = isGestaoEmpresa
+      ? (titulosStats.avulso_recebido || 0)
+      : (fretesReceitas.recebidos_1 || 0) + (fretesReceitas.recebidos_2 || 0) + (titulosStats.avulso_recebido || 0);
+
+    const totalAReceberGeral = isGestaoEmpresa
+      ? (titulosStats.avulso_a_receber || 0)
+      : (fretesReceitas.pendentes_1 || 0) + (fretesReceitas.pendentes_2 || 0) + (titulosStats.avulso_a_receber || 0);
 
     const totalPagoFreteiros = Math.max(pagamentosHistorico.total_pago_freteiros || 0, fretesTotais.freteiro_quitado || 0);
     const totalPagoGeral = totalPagoFreteiros + (fretesTotais.repasse_pago || 0) + (fretesTotais.comissao_paga || 0) + (titulosStats.avulso_pago || 0);
@@ -278,6 +283,9 @@ const listTitulos = (req, res) => {
 
     // 2. Se origem !== 'operacional_fixo', adicionar os fretes da tabela fretes
     if (origem !== 'operacional_fixo') {
+      const empresaObj = db.prepare('SELECT modo_operacao FROM empresas WHERE id = ? OR id = ?').get(empIdNum, empIdStr);
+      const isGestaoEmpresa = empresaObj?.modo_operacao === 'gestao_pagamentos';
+
       const fretes = db.prepare(`
         SELECT 
           f.*,
@@ -290,6 +298,7 @@ const listTitulos = (req, res) => {
       for (const f of fretes) {
         const isTriangular = Boolean(f.numero_cte_2 || Number(f.valor_frete_venda_2 || 0) > 0 || f.tipo_operacao === 'triangular');
         const isRepasse = Boolean(f.tipo_operacao === 'agenciamento_repasse' || Number(f.valor_repasse || 0) > 0);
+        const isModoGestao = isGestaoEmpresa || f.tipo_operacao === 'gestao_pagamentos';
         const dataEmissaoVal = f.data_emissao || (f.created_at ? f.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10));
         const dataVencVal = f.data_vencimento_cliente || dataEmissaoVal;
 
@@ -298,7 +307,9 @@ const listTitulos = (req, res) => {
         const vTotalReceber = Number((v1 + v2).toFixed(2));
 
         // 2.1 Contas a Receber: Pagamento do CT-e (Recebimento do Cliente/Tomador)
-        if (tipo === 'receber' || tipo === 'todos') {
+        // REGRA ESSENCIAL: Na modalidade "gestao_pagamentos" (ex: Farimax), a empresa é a TOMADORA do serviço que contrata o frete.
+        // Ela NUNCA gera Contas a Receber para CT-e, pois ela apenas realiza pagamentos (freteiro, comissão, repasse e parte por fora).
+        if (!isModoGestao && (tipo === 'receber' || tipo === 'todos')) {
           if (!fretesComTitulosAvulsos.has(`receber_${f.id}`) && vTotalReceber > 0) {
             const isRec1 = f.status_recebimento_cliente === 'recebido';
             const isRec2 = isTriangular ? (f.status_recebimento_cliente_2 === 'recebido') : true;

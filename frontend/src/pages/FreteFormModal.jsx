@@ -1431,7 +1431,7 @@ export default function FreteFormModal({ isOpen, onClose, onSuccess, freteEdit, 
                           <span className="font-mono font-bold text-amber-400">+{formatMoney(valorPorFora)}</span>
                         </div>
                         <p className="text-[10px] text-blue-300 pt-1 border-t border-slate-800/80 leading-relaxed">
-                          💡 <strong>Vinculação Financeira Automática:</strong> O financeiro gerará 1 Contas a Receber ({formatMoney(valorVendaTotal)}) do cliente e dividirá o pagamento do motorista em: Parcela Fiscal CT-e ({formatMoney(valorVendaTotal)}) + Parcela "Por Fora" ({formatMoney(valorPorFora)}) com CT-e, placa e peso informados.
+                          💡 <strong>Vinculação Financeira Automática:</strong> O financeiro gerará exclusivamente as contas a pagar do freteiro divididas em: Parcela Fiscal CT-e ({formatMoney(valorVendaTotal)}) + Parcela "Por Fora" ({formatMoney(valorPorFora)}) com CT-e, placa e peso informados.
                         </p>
                       </div>
                     ) : (
