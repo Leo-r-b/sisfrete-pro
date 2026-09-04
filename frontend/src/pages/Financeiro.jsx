@@ -436,6 +436,51 @@ _Favor enviar o comprovante de pagamento após a transferência._
   };
 
   const getCategoriaBadge = (cat, nome) => {
+    if (cat === 'frete_complemento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-950/40 border border-amber-500/40 text-amber-300 shadow-sm" title="Frete Complementar ('Por Fora')">
+          <Layers className="h-3 w-3 text-amber-400" />
+          <span>Frete Por Fora</span>
+        </span>
+      );
+    }
+
+    if (cat === 'frete_motorista') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-950/40 border border-blue-500/40 text-blue-300 shadow-sm" title="Frete Terceiro (Valor do CT-e)">
+          <Truck className="h-3 w-3 text-blue-400" />
+          <span>Frete CT-e Fiscal</span>
+        </span>
+      );
+    }
+
+    if (cat === 'comissao_agenciamento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-950/40 border border-purple-500/40 text-purple-300 shadow-sm" title="Comissão de Agenciamento">
+          <DollarSign className="h-3 w-3 text-purple-400" />
+          <span>Comissão Agenciamento</span>
+        </span>
+      );
+    }
+
+    if (cat === 'repasse_embarcador' || cat === 'repasse_agenciamento') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-950/40 border border-indigo-500/40 text-indigo-300 shadow-sm" title="Repasse Financeiro / Embarcador">
+          <Repeat className="h-3 w-3 text-indigo-400" />
+          <span>Repasse Embarcador</span>
+        </span>
+      );
+    }
+
+    if (cat === 'faturamento_frete') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-emerald-950/40 border border-emerald-500/40 text-emerald-300">
+          <Truck className="h-3 w-3 text-emerald-400" />
+          <span>{nome || 'Recebimento CT-e'}</span>
+        </span>
+      );
+    }
+
     const icons = {
       energia: Zap,
       agua: Droplet,
@@ -448,28 +493,16 @@ _Favor enviar o comprovante de pagamento após a transferência._
       salarios_prolabore: Users,
       impostos_taxas: Landmark,
       frete_motorista: Truck,
-      frete_complemento: Layers,
       repasse_agenciamento: Repeat,
-      repasse_embarcador: Repeat,
       comissao_agenciamento: DollarSign,
       faturamento_frete: Truck
     };
     const IconComponent = icons[cat] || Layers;
 
-    const labels = {
-      frete_motorista: 'Frete Terceiro',
-      frete_complemento: 'Frete Por Fora',
-      comissao_agenciamento: 'Comissão',
-      repasse_embarcador: 'Repasse',
-      repasse_agenciamento: 'Repasse',
-      faturamento_frete: 'Recebimento CT-e'
-    };
-    const labelTexto = labels[cat] || nome || cat;
-
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-        <IconComponent className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-        <span className="truncate max-w-[140px]" title={labelTexto}>{labelTexto}</span>
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-800 border border-slate-700 text-slate-300">
+        <IconComponent className="h-3 w-3 text-blue-400" />
+        <span>{nome || cat}</span>
       </span>
     );
   };
@@ -530,77 +563,77 @@ _Favor enviar o comprovante de pagamento após a transferência._
 
     return (
       <React.Fragment key={t.id}>
-        <tr className={`hover:bg-slate-800/30 transition border-l-2 ${
-          isInsideFreteGroup ? 'border-l-slate-700' : 'border-l-transparent'
+        <tr className={`hover:bg-slate-800/40 transition border-l-4 ${
+          isInsideFreteGroup ? accentBorderColor : 'border-l-slate-700'
         } ${
           isLastInGroup 
-            ? (isInsideFreteGroup ? 'border-b-2 border-slate-950 shadow-sm' : 'border-b border-slate-800') 
-            : 'border-b border-slate-800/50'
+            ? (isInsideFreteGroup ? 'border-b-4 border-slate-950 shadow-sm' : 'border-b border-slate-800') 
+            : 'border-b border-slate-800/40 border-dashed'
         }`}>
         
           {/* Descrição & Origem */}
-          <td className="px-3.5 py-2.5">
+          <td className="px-3 py-2.5">
             {isPorFora ? (
-              <div className="flex items-start gap-2 pl-3 py-0.5">
-                <span className="text-slate-500 font-bold text-xs select-none mt-0.5">↳</span>
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-amber-400 font-black text-sm leading-none mt-0.5">↳</span>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium inline-flex items-center gap-1">
-                      <Layers className="h-3 w-3 text-slate-400" />
-                      Por Fora
+                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Layers className="h-2.5 w-2.5" />
+                      Frete Por Fora (Excedente)
                     </span>
-                    <p className="font-semibold text-slate-200 text-xs truncate max-w-[220px]" title={t.descricao}>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
                       {t.descricao}
                     </p>
                   </div>
-                  <span className="text-[10px] text-slate-500 block">
+                  <span className="text-[9.5px] text-amber-300/70 block">
                     Diferença acordada s/ CT-e Fiscal
                   </span>
                 </div>
               </div>
             ) : isFiscal ? (
-              <div className="flex items-start gap-2 py-0.5">
-                <span className="text-slate-500 font-bold text-xs select-none mt-0.5">1.</span>
+              <div className="flex items-start gap-1.5 py-0.5">
+                <span className="text-blue-400 font-black text-xs mt-0.5">1.</span>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium inline-flex items-center gap-1">
-                      <Truck className="h-3 w-3 text-slate-400" />
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Truck className="h-2.5 w-2.5" />
                       CT-e Fiscal
                     </span>
-                    <p className="font-semibold text-slate-200 text-xs truncate max-w-[220px]" title={t.descricao}>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
                       {t.descricao}
                     </p>
                   </div>
-                  <span className="text-[10px] text-slate-500 block">
+                  <span className="text-[9.5px] text-blue-300/70 block">
                     Valor oficial acobertado pelo CT-e
                   </span>
                 </div>
               </div>
             ) : isComissao ? (
-              <div className="flex items-start gap-2 pl-3 py-0.5">
-                <span className="text-slate-500 font-bold text-xs select-none mt-0.5">↳</span>
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-purple-400 font-black text-sm leading-none mt-0.5">↳</span>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium inline-flex items-center gap-1">
-                      <DollarSign className="h-3 w-3 text-slate-400" />
-                      Comissão
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <DollarSign className="h-2.5 w-2.5" />
+                      Comissão Agenciamento
                     </span>
-                    <p className="font-semibold text-slate-200 text-xs truncate max-w-[220px]" title={t.descricao}>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
                       {t.descricao}
                     </p>
                   </div>
                 </div>
               </div>
             ) : isRepasse ? (
-              <div className="flex items-start gap-2 pl-3 py-0.5">
-                <span className="text-slate-500 font-bold text-xs select-none mt-0.5">↳</span>
+              <div className="flex items-start gap-1.5 pl-3 py-0.5">
+                <span className="text-indigo-400 font-black text-sm leading-none mt-0.5">↳</span>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium inline-flex items-center gap-1">
-                      <Repeat className="h-3 w-3 text-slate-400" />
-                      Repasse
+                    <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Repeat className="h-2.5 w-2.5" />
+                      Repasse Financeiro
                     </span>
-                    <p className="font-semibold text-slate-200 text-xs truncate max-w-[220px]" title={t.descricao}>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
                       {t.descricao}
                     </p>
                   </div>
@@ -608,25 +641,25 @@ _Favor enviar o comprovante de pagamento após a transferência._
               </div>
             ) : t.is_triangular ? (
               <div className="space-y-1">
-                <div className="p-1.5 rounded bg-slate-800/60 border border-slate-700 text-[10px]">
+                <div className="p-1 rounded bg-indigo-950/40 border border-indigo-500/30 text-[10px]">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-semibold text-slate-300 font-mono">1: Nº {t.numero_cte || 'S/N'}</span>
-                    <span className="text-[9px] text-slate-300 font-mono">{formatMoney(t.valor_cte_1 || t.valor)}</span>
+                    <span className="font-bold text-indigo-300 font-mono">1: Nº {t.numero_cte || 'S/N'}</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_1 || t.valor)}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-slate-700/60">
-                    <span className="font-semibold text-slate-300 font-mono">2: Nº {t.numero_cte_2 || 'S/N'}</span>
-                    <span className="text-[9px] text-slate-300 font-mono">{formatMoney(t.valor_cte_2)}</span>
+                  <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-indigo-900/50">
+                    <span className="font-bold text-purple-300 font-mono">2: Nº {t.numero_cte_2 || 'S/N'}</span>
+                    <span className="text-[9px] text-emerald-400 font-mono">{formatMoney(t.valor_cte_2)}</span>
                   </div>
                 </div>
-                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[9px] font-medium inline-block">
-                  Triangular (2 CT-es)
+                <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[8.5px] font-bold inline-block">
+                  🔄 Triangular (2 CT-es)
                 </span>
               </div>
             ) : (
               <div>
-                <p className="font-semibold text-slate-200 text-xs truncate max-w-[220px]" title={t.descricao}>{t.descricao}</p>
-                <span className="text-[10px] text-slate-500">
-                  {t.is_frete ? 'Vinculado a Frete' : 'Operacional / Fixo'}
+                <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>{t.descricao}</p>
+                <span className="text-[10px] text-slate-400">
+                  {t.is_frete ? '🚚 Vinculado a Frete' : '🏢 Despesa / Título Avulso'}
                 </span>
               </div>
             )}
@@ -641,14 +674,14 @@ _Favor enviar o comprovante de pagamento após a transferência._
           <td className="px-3 py-2.5">
             {t.tipo === 'receber' && t.is_triangular ? (
               <div className="space-y-0.5 text-[11px]">
-                <p className="font-medium text-slate-300 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
-                <p className="font-medium text-slate-300 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
+                <p className="font-medium text-indigo-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome}>1. {t.cliente_nome}</p>
+                <p className="font-medium text-purple-200 truncate max-w-[150px] lg:max-w-[200px]" title={t.cliente_nome_2 || t.cliente_nome}>2. {t.cliente_nome_2 || t.cliente_nome}</p>
               </div>
             ) : (
               <div>
                 <p className="font-medium text-slate-200 truncate max-w-[160px] lg:max-w-[220px]" title={t.pessoa_nome}>{t.pessoa_nome || '-'}</p>
                 {t.forma_pagamento && (
-                  <p className="text-[10px] text-slate-500 font-mono">{t.forma_pagamento}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{t.forma_pagamento}</p>
                 )}
               </div>
             )}
@@ -656,23 +689,19 @@ _Favor enviar o comprovante de pagamento após a transferência._
 
           {/* Vencimento */}
           <td className="px-3 py-2.5 whitespace-nowrap">
-            <p className="font-mono text-xs text-slate-300">
+            <p className={`font-semibold font-mono ${isVencido ? 'text-rose-400' : 'text-slate-300'}`}>
               {t.data_vencimento ? new Date(t.data_vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
             </p>
-            {isVencido && (
-              <span className="text-[9.5px] text-slate-500 font-medium block">
-                Vencido
-              </span>
-            )}
+            {isVencido && <span className="text-[9px] text-rose-400 font-bold block">Vencido</span>}
           </td>
 
           {/* Valor Bruto do Título */}
           <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
-            <span className="font-medium text-xs text-slate-200">
+            <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-slate-200'}`}>
               {formatMoney(valorTotal)}
             </span>
             {t.is_triangular && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
-              <span className="text-[8.5px] text-slate-500 block font-normal">
+              <span className="text-[8.5px] text-slate-400 block font-normal">
                 (CT-es: {formatMoney(t.valor_cte_1)} | {formatMoney(t.valor_cte_2)})
               </span>
             )}
@@ -690,7 +719,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                   -{formatMoney(valorDesconto)}
                 </span>
                 {motivoDesconto && (
-                  <span className="text-[8.5px] text-slate-400 truncate max-w-[110px] block ml-auto" title={motivoDesconto}>
+                  <span className="text-[8.5px] text-rose-300/80 truncate max-w-[110px] block ml-auto" title={motivoDesconto}>
                     {motivoDesconto}
                   </span>
                 )}
@@ -699,7 +728,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
               <button
                 type="button"
                 onClick={() => handleOpenModalDesconto(t)}
-                className="text-slate-600 hover:text-slate-300 text-xs px-2 py-0.5 rounded transition cursor-pointer hover:bg-slate-800"
+                className="text-slate-600 hover:text-rose-400 text-xs px-2 py-0.5 rounded transition cursor-pointer hover:bg-rose-500/10 font-bold"
                 title="Aplicar desconto / abatimento (Roubo, avaria, quebra)"
               >
                 -
@@ -707,41 +736,37 @@ _Favor enviar o comprovante de pagamento após a transferência._
             )}
           </td>
 
-          {/* Pago e Saldo Restante - DESTAQUE IMPORTANTE */}
+          {/* Pago e Saldo Restante */}
           <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono">
             {valorPago > 0 && !isQuitado && (
-              <span className="text-[9.5px] text-slate-400 block font-normal">Pago: {formatMoney(valorPago)}</span>
+              <span className="text-[10px] text-emerald-400 block font-medium">Pago: {formatMoney(valorPago)}</span>
             )}
-            <span className={`font-bold text-xs ${
-              saldoPendente <= 0.01 
-                ? 'text-slate-500 font-normal' 
-                : 'text-amber-300'
-            }`}>
+            <span className={`font-bold text-xs ${saldoPendente <= 0.01 ? 'text-slate-500' : isParcial ? 'text-amber-400' : 'text-slate-300'}`}>
               {saldoPendente <= 0.01 ? 'R$ 0,00' : formatMoney(saldoPendente)}
             </span>
           </td>
 
-          {/* Status Geral Discreto */}
+          {/* Status Geral Limpo */}
           <td className="px-3 py-2.5 text-center whitespace-nowrap">
             {isQuitado ? (
-              <span className="px-2 py-0.5 rounded-md text-[10px] bg-slate-800 text-emerald-400 border border-emerald-500/20 font-medium inline-flex items-center justify-center gap-1 mx-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 inline-flex items-center justify-center gap-1 mx-auto">
+                <CheckCircle2 className="h-3 w-3" />
                 <span>{t.tipo === 'receber' ? 'Recebido' : 'Quitado'}</span>
               </span>
             ) : isParcial ? (
-              <span className="px-2 py-0.5 rounded-md text-[10px] bg-slate-800 text-blue-400 border border-blue-500/20 font-medium inline-flex items-center justify-center gap-1 mx-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40 inline-flex items-center justify-center gap-1 mx-auto">
+                <Clock className="h-3 w-3" />
                 <span>Parcial</span>
               </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-md text-[10px] bg-slate-800 text-slate-300 border border-slate-700 font-medium inline-flex items-center justify-center gap-1 mx-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 inline-flex items-center justify-center gap-1 mx-auto">
+                <Clock className="h-3 w-3" />
                 <span>Pendente</span>
               </span>
             )}
           </td>
 
-          {/* Ações Rápidas em Estilo Neutro e Homogêneo */}
+          {/* Ações Rápidas Ultra Compactas em Linha Única */}
           <td className="px-3 py-2.5 text-center whitespace-nowrap">
             <div className="flex items-center justify-center gap-1 flex-nowrap">
               
@@ -750,17 +775,21 @@ _Favor enviar o comprovante de pagamento após a transferência._
                 <button
                   type="button"
                   onClick={() => handleOpenBaixa(t)}
-                  className="p-1.5 rounded-lg bg-slate-800/90 text-slate-300 hover:text-emerald-300 hover:bg-slate-750 border border-slate-700 hover:border-emerald-500/40 transition cursor-pointer shadow-sm"
+                  className={`p-1.5 rounded-lg text-white transition cursor-pointer shadow-sm ${
+                    isParcial 
+                      ? 'bg-indigo-600 hover:bg-indigo-500 border border-indigo-400' 
+                      : 'bg-emerald-600 hover:bg-emerald-500 border border-emerald-400'
+                  }`}
                   title={isParcial ? `Pagar Saldo Restante: ${formatMoney(saldoPendente)}` : (t.tipo === 'receber' ? `Receber Valor: ${formatMoney(saldoPendente)}` : `Quitar Título: ${formatMoney(saldoPendente)}`)}
                 >
-                  <DollarSign className="h-3.5 w-3.5 stroke-[2]" />
+                  <DollarSign className="h-3.5 w-3.5 stroke-[2.5]" />
                 </button>
               ) : (
                 <span 
-                  className="p-1.5 rounded-lg bg-slate-800/40 text-slate-600 border border-slate-800 inline-flex items-center justify-center cursor-default"
+                  className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center justify-center cursor-default"
                   title="Título 100% Quitado"
                 >
-                  <Check className="h-3.5 w-3.5 stroke-[2]" />
+                  <Check className="h-3.5 w-3.5 stroke-[2.5]" />
                 </span>
               )}
 
@@ -768,10 +797,10 @@ _Favor enviar o comprovante de pagamento após a transferência._
               <button
                 type="button"
                 onClick={() => toggleExpandTitulo(t.id)}
-                className={`p-1.5 rounded-lg border transition cursor-pointer shadow-sm ${
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
                   expandedTituloIds.has(t.id)
-                    ? 'bg-slate-700 text-white border-slate-600'
-                    : 'bg-slate-800/90 text-slate-400 hover:text-white hover:bg-slate-750 border-slate-700 hover:border-slate-600'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                    : 'bg-slate-800 text-blue-400 border-slate-700 hover:bg-blue-600 hover:border-blue-600 hover:text-white'
                 }`}
                 title={t.quantidade_baixas > 0 ? `Ver Extrato de Baixas (${t.quantidade_baixas} baixa(s))` : 'Ver Extrato de Baixas'}
               >
@@ -783,7 +812,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                 <button
                   type="button"
                   onClick={() => handleOpenReciboFromTitulo(t)}
-                  className="p-1.5 rounded-lg bg-slate-800/90 text-slate-400 hover:text-white hover:bg-slate-750 border border-slate-700 hover:border-slate-600 transition cursor-pointer shadow-sm"
+                  className="p-1.5 rounded-lg bg-slate-800 text-amber-400 border border-slate-700 hover:bg-amber-600 hover:border-amber-600 hover:text-white transition cursor-pointer shadow-sm"
                   title="Imprimir Recibo Oficial"
                 >
                   <Printer className="h-3.5 w-3.5" />
@@ -794,10 +823,10 @@ _Favor enviar o comprovante de pagamento após a transferência._
               <button
                 type="button"
                 onClick={() => handleOpenModalDesconto(t)}
-                className={`p-1.5 rounded-lg border transition cursor-pointer shadow-sm ${
+                className={`p-1.5 rounded-lg border transition cursor-pointer ${
                   valorDesconto > 0
-                    ? 'bg-slate-800/90 text-rose-400 border-rose-500/40 hover:bg-rose-950/40'
-                    : 'bg-slate-800/90 text-slate-400 hover:text-rose-400 hover:bg-slate-750 border-slate-700 hover:border-slate-600'
+                    ? 'bg-rose-600/30 text-rose-300 border-rose-500/50 hover:bg-rose-600 hover:text-white'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-rose-600 hover:border-rose-600 hover:text-white'
                 }`}
                 title={valorDesconto > 0 ? `Desconto Aplicado: -${formatMoney(valorDesconto)} (${motivoDesconto || 'Editar'})` : 'Aplicar Desconto de Carga (Roubo / Avaria)'}
               >
@@ -812,7 +841,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
                   setCopiedWhatsApp(false);
                   setWhatsappTelefone('');
                 }}
-                className="p-1.5 rounded-lg bg-slate-800/90 text-slate-400 hover:text-emerald-400 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 transition cursor-pointer shadow-sm"
+                className="p-1.5 rounded-lg bg-slate-800 text-emerald-400 border border-slate-700 hover:bg-emerald-600 hover:border-emerald-600 hover:text-white transition cursor-pointer shadow-sm"
                 title={t.tipo === 'receber' ? 'Enviar cobrança no WhatsApp' : 'Enviar comprovante / extrato no WhatsApp'}
               >
                 <MessageCircle className="h-3.5 w-3.5" />
@@ -822,7 +851,7 @@ _Favor enviar o comprovante de pagamento após a transferência._
               <button
                 type="button"
                 onClick={() => setTituloParaExcluir(t)}
-                className="p-1.5 rounded-lg bg-slate-800/90 text-slate-400 hover:text-rose-400 hover:bg-slate-750 border border-slate-700 hover:border-rose-500/40 transition cursor-pointer shadow-sm"
+                className="p-1.5 rounded-lg bg-slate-800 text-rose-400 border border-slate-700 hover:bg-rose-600 hover:border-rose-600 hover:text-white transition cursor-pointer shadow-sm"
                 title="Excluir Lançamento Financeiro"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -1412,14 +1441,14 @@ _Favor enviar o comprovante de pagamento após a transferência._
         <div className="rounded-2xl border border-slate-800 bg-slate-900 overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900/90 uppercase text-[10px] font-semibold text-slate-400 border-b border-slate-800 tracking-wider">
+              <thead className="bg-slate-800/80 uppercase text-[10px] font-bold text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="px-3.5 py-2.5">Descrição / Título</th>
-                  <th className="px-3 py-2.5">Categoria</th>
+                  <th className="px-3 py-2.5">Descrição / Título</th>
+                  <th className="px-3 py-2.5">Categoria (Plano de Contas)</th>
                   <th className="px-3 py-2.5">Favorecido / Tomador</th>
                   <th className="px-3 py-2.5">Vencimento</th>
                   <th className="px-3 py-2.5 text-right font-mono">Valor Título</th>
-                  <th className="px-3 py-2.5 text-right font-mono">Desconto</th>
+                  <th className="px-3 py-2.5 text-right font-mono text-rose-400">Desconto</th>
                   <th className="px-3 py-2.5 text-right font-mono">Pago / Saldo</th>
                   <th className="px-3 py-2.5 text-center">Status</th>
                   <th className="px-3 py-2.5 text-center">Ações</th>
@@ -1448,49 +1477,53 @@ _Favor enviar o comprovante de pagamento após a transferência._
 
                       return (
                         <React.Fragment key={grupo.key}>
-                          {/* CABEÇALHO DO BLOCO DA OPERAÇÃO / CT-e */}
-                          <tr className="bg-slate-850 border-t border-slate-700/80 border-b border-slate-800/80">
-                            <td colSpan={9} className="px-3.5 py-2.5 text-xs">
+                          {/* CABEÇALHO DO BLOCO DA OPERAÇÃO / CT-e (Moldura com linha superior forte e união visual) */}
+                          <tr className={`bg-slate-800/95 border-t-2 border-slate-600 border-l-4 ${accentBorderColor}`}>
+                            <td colSpan={9} className="px-3 py-2 text-xs">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono text-[10px] font-semibold flex items-center gap-1.5">
-                                    <Truck className="h-3 w-3 text-slate-400" />
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold flex items-center gap-1 border ${
+                                    activeSubTab === 'receber'
+                                      ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-blue-600/30 text-blue-300 border-blue-500/40'
+                                  }`}>
+                                    <Truck className="h-3 w-3" />
                                     CT-e Nº {grupo.numero_cte || 'S/N'}
                                   </span>
                                   {grupo.is_triangular && (
-                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 text-[9px] font-medium">
-                                      Triangular (+ Nº {grupo.numero_cte_2 || 'S/N'})
+                                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold">
+                                      🔄 Triangular (+ Nº {grupo.numero_cte_2 || 'S/N'})
                                     </span>
                                   )}
-                                  <span className="font-semibold text-slate-100 text-xs">
+                                  <span className="font-bold text-white text-xs">
                                     {grupo.motorista_nome}
                                   </span>
                                   {grupo.placa_veiculo && (
-                                    <span className="text-[10.5px] text-slate-400 font-mono">
-                                      • Placa: <strong className="text-slate-300 font-normal">{grupo.placa_veiculo}</strong>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      • Placa: <strong className="text-slate-200">{grupo.placa_veiculo}</strong>
                                     </span>
                                   )}
                                   {grupo.cliente_nome && (
-                                    <span className="text-[10.5px] text-slate-400 truncate max-w-[200px]" title={grupo.cliente_nome}>
+                                    <span className="text-[10px] text-slate-400 truncate max-w-[200px]" title={grupo.cliente_nome}>
                                       • Tomador: {grupo.cliente_nome}
                                     </span>
                                   )}
                                   {isMultiplasParcelas && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-750 font-normal">
-                                      {grupo.titulos.length} parcelas vinculadas
+                                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-700/60 text-slate-300 border border-slate-600 font-medium">
+                                      {grupo.titulos.length} parcelas vinculadas (CT-e + Por Fora / Complementos)
                                     </span>
                                   )}
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                  <div className="flex items-center gap-1.5 text-xs">
-                                    <span className="text-slate-400 text-[10.5px]">Total:</span>
-                                    <span className="font-mono font-bold text-slate-200 text-xs">
+                                  <div className="flex items-center gap-1.5 text-[11px]">
+                                    <span className="text-slate-400 text-[10px] uppercase font-semibold">Total Operação:</span>
+                                    <span className="font-mono font-black text-emerald-400 text-xs">
                                       {formatMoney(totalValorGrupo)}
                                     </span>
                                   </div>
                                   {totalDescontoGrupo > 0 && (
-                                    <span className="text-[10px] text-rose-400 font-mono font-medium" title="Total de descontos abatidos do freteiro">
+                                    <span className="text-[10px] text-rose-400 font-mono font-bold" title="Total de descontos abatidos do freteiro">
                                       (Desc: -{formatMoney(totalDescontoGrupo)})
                                     </span>
                                   )}
@@ -1499,24 +1532,24 @@ _Favor enviar o comprovante de pagamento após a transferência._
                                       (Pago: {formatMoney(totalPagoGrupo)})
                                     </span>
                                   )}
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-md font-mono ${
+                                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${
                                     isGrupoQuitado 
-                                      ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20 font-medium' 
+                                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' 
                                       : isGrupoParcial
-                                        ? 'bg-slate-800 text-blue-300 border border-blue-500/20 font-semibold'
-                                        : 'bg-slate-800 text-amber-300 border border-amber-500/30 font-bold'
+                                        ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30'
+                                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
                                   }`}>
-                                    {isGrupoQuitado ? 'Liquidado' : `Saldo: ${formatMoney(saldoPendenteGrupo)}`}
+                                    {isGrupoQuitado ? '✓ Operação 100% Paga' : `Saldo: ${formatMoney(saldoPendenteGrupo)}`}
                                   </span>
 
                                   {onOpenRecibo && (
                                     <button
                                       type="button"
                                       onClick={() => handleOpenReciboFromTitulo(grupo.titulos[0])}
-                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer text-[10.5px] font-medium"
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 transition cursor-pointer text-[10.5px] font-bold"
                                       title="Imprimir Recibo Geral da Operação"
                                     >
-                                      <Printer className="h-3 w-3 text-slate-400" />
+                                      <Printer className="h-3 w-3" />
                                       <span>Recibo Geral</span>
                                     </button>
                                   )}
