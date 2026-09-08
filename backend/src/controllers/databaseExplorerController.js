@@ -272,10 +272,13 @@ const deleteRecord = async (req, res) => {
       return res.status(400).json({ error: `Tabela '${table}' não permitida.` });
     }
 
-    // Não permitir exclusão acidental da Licença 1 (Matriz padrão) ou do Super Admin
-    if (tableConfig.id === 'empresas' && Number(id) === 1) {
-      return res.status(403).json({ error: 'A Licença Matriz #1 não pode ser excluída por ser a âncora principal do sistema.' });
+    // Se for excluir da tabela empresas, desvincular super_admin antes de excluir
+    if (tableConfig.id === 'empresas') {
+      try {
+        db.prepare("UPDATE users SET empresa_id = NULL WHERE role = 'super_admin' AND empresa_id = ?").run(id);
+      } catch (e) {}
     }
+
     if (tableConfig.id === 'users') {
       const userObj = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
       if (userObj && userObj.role === 'super_admin') {

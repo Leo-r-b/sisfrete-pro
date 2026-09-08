@@ -39,11 +39,11 @@ function authMiddleware(req, res, next) {
       } else if (req.user.empresa_id) {
         req.empresaId = parseInt(req.user.empresa_id, 10);
       } else {
-        // Fallback: super_admin sem empresa selecionada usa empresa 1
-        req.empresaId = 1;
+        // Super Admin opera em modo global desvinculado
+        req.empresaId = null;
       }
     } else {
-      req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1;
+      req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : null;
     }
 
     next();

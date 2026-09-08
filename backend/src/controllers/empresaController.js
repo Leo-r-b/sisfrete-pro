@@ -379,26 +379,43 @@ const updateEmpresa = async (req, res) => {
   }
 };
 
-// Excluir ou desativar empresa
+// Excluir ou desativar empresa (Autonomia total para o Super Admin Master)
 const deleteEmpresa = async (req, res) => {
   try {
     const { id } = req.params;
     const empresaId = Number(id);
 
-    if (empresaId === 1) {
-      return res.status(400).json({ error: 'A empresa principal matriz (ID: 1) não pode ser excluída.' });
+    if (!empresaId) {
+      return res.status(400).json({ error: 'ID de licença inválido.' });
     }
 
-    // Excluir em cascata todos os dados da empresa
-    db.prepare('DELETE FROM licencas_cobrancas WHERE empresa_id = ?').run(empresaId);
-    db.prepare('DELETE FROM adiantamentos_historico WHERE empresa_id = ?').run(empresaId);
-    db.prepare('DELETE FROM fretes WHERE empresa_id = ?').run(empresaId);
-    db.prepare('DELETE FROM motoristas WHERE empresa_id = ?').run(empresaId);
-    db.prepare('DELETE FROM clientes WHERE empresa_id = ?').run(empresaId);
-    db.prepare('DELETE FROM users WHERE empresa_id = ?').run(empresaId);
+    // 1. Desvincular qualquer usuário super_admin caso esteja associado a esta empresa
+    try {
+      db.prepare("UPDATE users SET empresa_id = NULL WHERE role = 'super_admin' AND empresa_id = ?").run(empresaId);
+    } catch (e) {}
+
+    // 2. Excluir em cascata todos os dados da empresa
+    try { db.prepare('DELETE FROM licencas_cobrancas WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM adiantamentos_historico WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM financeiro_baixas_historico WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM financeiro_titulos WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM carregamentos WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM mdfes WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM frete_eventos_rastreamento WHERE frete_id IN (SELECT id FROM fretes WHERE empresa_id = ?)').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM cobrancas_bancarias WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM veiculos_manutencoes WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM veiculos_pneus WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM veiculos WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM empresa_fiscal_config WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM empresa_config WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM fretes WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM motoristas WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    try { db.prepare('DELETE FROM clientes WHERE empresa_id = ?').run(empresaId); } catch (e) {}
+    // NUNCA exclui usuários com role 'super_admin' (Master Global)
+    try { db.prepare("DELETE FROM users WHERE empresa_id = ? AND role != 'super_admin'").run(empresaId); } catch (e) {}
     db.prepare('DELETE FROM empresas WHERE id = ?').run(empresaId);
 
-    // Sincronizar com Turso Cloud
+    // Sincronizar com Turso Cloud (se aplicável)
     if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
       try {
         const { createClient } = require('@libsql/client');
@@ -406,21 +423,24 @@ const deleteEmpresa = async (req, res) => {
           url: process.env.TURSO_DATABASE_URL,
           authToken: process.env.TURSO_AUTH_TOKEN
         });
+        await turso.execute({ sql: "UPDATE users SET empresa_id = NULL WHERE role = 'super_admin' AND empresa_id = ?", args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM licencas_cobrancas WHERE empresa_id = ?', args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM adiantamentos_historico WHERE empresa_id = ?', args: [empresaId] });
+        await turso.execute({ sql: 'DELETE FROM financeiro_titulos WHERE empresa_id = ?', args: [empresaId] });
+        await turso.execute({ sql: 'DELETE FROM carregamentos WHERE empresa_id = ?', args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM fretes WHERE empresa_id = ?', args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM motoristas WHERE empresa_id = ?', args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM clientes WHERE empresa_id = ?', args: [empresaId] });
-        await turso.execute({ sql: 'DELETE FROM users WHERE empresa_id = ?', args: [empresaId] });
+        await turso.execute({ sql: "DELETE FROM users WHERE empresa_id = ? AND role != 'super_admin'", args: [empresaId] });
         await turso.execute({ sql: 'DELETE FROM empresas WHERE id = ?', args: [empresaId] });
       } catch (tErr) {
         console.warn('Aviso sincronização deleteEmpresa Turso:', tErr.message);
       }
     }
 
-    return res.json({ message: 'Empresa e todos os seus registros excluídos com sucesso!' });
+    return res.json({ message: 'Licença e todos os seus registros operacionais excluídos com sucesso!' });
   } catch (error) {
-    return res.status(500).json({ error: 'Erro ao excluir empresa: ' + error.message });
+    return res.status(500).json({ error: 'Erro ao excluir licença: ' + error.message });
   }
 };
 

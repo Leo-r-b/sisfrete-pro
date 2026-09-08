@@ -35,6 +35,8 @@ export function AuthProvider({ children }) {
         if (!current && res.data && res.data.length > 0) {
           current = res.data[0];
           localStorage.setItem('sisfrete_active_empresa_id', current.id);
+        } else if (!current) {
+          localStorage.removeItem('sisfrete_active_empresa_id');
         }
         setActiveEmpresa(current);
         const modo = (current?.modo_operacao === 'agenciamento_repasse' || current?.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';

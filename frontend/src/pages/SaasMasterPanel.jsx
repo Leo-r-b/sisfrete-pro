@@ -411,6 +411,10 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     if (!window.confirm(`ATENÇÃO: Deseja realmente excluir a Licença "${nome}"? Todos os fretes, motoristas e usuários desta licença serão apagados permanentemente.`)) return;
     try {
       await api.delete(`/empresas/${id}`);
+      const storedActiveId = localStorage.getItem('sisfrete_active_empresa_id');
+      if (String(storedActiveId) === String(id)) {
+        localStorage.removeItem('sisfrete_active_empresa_id');
+      }
       await loadDashboard();
       await loadCobrancas();
       await loadEmpresas();
@@ -921,8 +925,17 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
           </div>
 
           {/* Grid de Cards de Licenças */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {dashboardData?.licencas?.map((emp) => {
+          {(!dashboardData?.licencas || dashboardData.licencas.length === 0) ? (
+            <div className="p-12 text-center rounded-2xl bg-slate-950/40 border border-slate-800 flex flex-col items-center justify-center gap-3">
+              <Building2 className="h-12 w-12 text-slate-600" />
+              <p className="text-base font-bold text-white">Nenhuma licença cadastrada no sistema</p>
+              <p className="text-xs text-slate-400 max-w-md">
+                O usuário Master está ativo com autonomia total. Você pode criar novas licenças clicando no botão "Nova Licença / Empresa" acima a qualquer momento.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {dashboardData.licencas.map((emp) => {
               const limite = emp.limite_logins || 5;
               const usados = emp.total_usuarios || 0;
               const percentUsado = Math.min(100, Math.round((usados / limite) * 100));
@@ -1184,21 +1197,20 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                       >
                         <Edit className="h-3.5 w-3.5" />
                       </button>
-                      {dashboardData?.licencas?.length > 1 && (
-                        <button
-                          onClick={() => handleDeleteLicenca(emp.id, emp.nome_fantasia || emp.razao_social)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
-                          title="Excluir Licença"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleDeleteLicenca(emp.id, emp.nome_fantasia || emp.razao_social)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
+                        title="Excluir Licença Definitivamente"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+          )}
         </div>
       )}
 

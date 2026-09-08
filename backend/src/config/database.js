@@ -698,278 +698,38 @@ function initDatabase() {
     }
   } catch (e) {}
 
-  // Garantir que a Empresa 1 exista na tabela empresas
-  const empresaCount = db.prepare('SELECT COUNT(*) as count FROM empresas').get();
-  if (empresaCount.count === 0) {
-    const existingConfig = db.prepare('SELECT * FROM empresa_config LIMIT 1').get();
-    db.prepare(`
-      INSERT INTO empresas (id, codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf, ativo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(
-      1,
-      '1',
-      10,
-      350.00,
-      10,
-      existingConfig?.razao_social || 'LOGÍSTICA & TRANSPORTES BRASIL LTDA',
-      existingConfig?.nome_fantasia || 'LogBrasil Agenciamento',
-      existingConfig?.cnpj || '34.123.456/0001-89',
-      existingConfig?.telefone || '(11) 98765-4321',
-      existingConfig?.email || 'contato@logbrasil.com.br',
-      existingConfig?.chave_pix || '34123456000189',
-      existingConfig?.cidade || 'Arapongas',
-      existingConfig?.uf || 'PR'
-    );
-  }
-
-  // 1. Garantir Usuário GHOST MASTER (Super Admin Global - DESVINCULADO de qualquer licença)
+  // =========================================================================
+  // USUÁRIOS SUPER_ADMIN (MASTER SAAS - 100% DESVINCULADOS DE LICENÇAS)
+  // O Master tem autonomia completa para criar e excluir todas e quaisquer licenças.
+  // =========================================================================
   const masterPassHash = bcrypt.hashSync('master123', 10);
+  
+  // Garantir que ghost@sisfrete.com exista e tenha empresa_id = null
   const ghostUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get('ghost@sisfrete.com');
   if (!ghostUser) {
     db.prepare(`
       INSERT INTO users (empresa_id, name, email, password_hash, role)
       VALUES (?, ?, ?, ?, ?)
     `).run(null, 'Ghost Master (SaaS Owner)', 'ghost@sisfrete.com', masterPassHash, 'super_admin');
+  } else {
+    db.prepare("UPDATE users SET empresa_id = NULL, role = 'super_admin' WHERE id = ?").run(ghostUser.id);
   }
 
-  // 2. Garantir Administrador da Licença 1 (se nenhum usuário existir para a empresa 1)
-  const usersEmp1Count = db.prepare('SELECT COUNT(*) as count FROM users WHERE empresa_id = 1').get();
-  if (!usersEmp1Count || usersEmp1Count.count === 0) {
-    const adminPassHash = bcrypt.hashSync('admin123', 10);
-    const operadorPassHash = bcrypt.hashSync('operador123', 10);
-    db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(1, 'Administrador Arapongas', 'admin@sisfrete.com', adminPassHash, 'admin');
-    db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(1, 'Operador Logístico', 'operador@sisfrete.com', operadorPassHash, 'operador');
-  }
-
-  // 3. Garantir que a Licença 9 (BOBLOG TRANSPORTES) exista no banco (se não existir)
-  let boblogEmpresa = db.prepare("SELECT id FROM empresas WHERE codigo_licenca = '9' OR id = 9").get();
-  if (!boblogEmpresa) {
-    try {
-      db.prepare(`
-        INSERT INTO empresas (
-          id, codigo_licenca, limite_logins, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf, modo_operacao, ativo
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'padrao', 1)
-      `).run(
-        9,
-        '9',
-        10,
-        'BOBLOG TRANSPORTE RODOVIARIO DE CARGAS LTDA - ME',
-        'BOBLOG TRANSPORTES',
-        '15.528.305/0001-48',
-        '(71) 3301-4500',
-        'teste@boblog.com',
-        '15528305000148',
-        'Salvador',
-        'BA'
-      );
-      boblogEmpresa = { id: 9 };
-    } catch (e) {
-      const ins = db.prepare(`
-        INSERT INTO empresas (
-          codigo_licenca, limite_logins, razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf, modo_operacao, ativo
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'padrao', 1)
-      `).run(
-        '9',
-        10,
-        'BOBLOG TRANSPORTE RODOVIARIO DE CARGAS LTDA - ME',
-        'BOBLOG TRANSPORTES',
-        '15.528.305/0001-48',
-        '(71) 3301-4500',
-        'teste@boblog.com',
-        '15528305000148',
-        'Salvador',
-        'BA'
-      );
-      boblogEmpresa = { id: Number(ins.lastInsertRowid) };
-    }
-  }
-
-  // Garantir usuário da Licença 9 apenas se não existir
-  const usersEmp9Count = db.prepare('SELECT COUNT(*) as count FROM users WHERE empresa_id = ?').get(boblogEmpresa.id);
-  if (!usersEmp9Count || usersEmp9Count.count === 0) {
-    const boblogPassHash = bcrypt.hashSync('boblog123', 10);
-    db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(boblogEmpresa.id, 'Boblog Transportes', 'teste@boblog.com', boblogPassHash, 'admin');
-  }
-
-  // =========================================================================
-  // 4. GARANTIR A LICENÇA 4 (se não existir)
-  // =========================================================================
-  let pulpoEmpresa = db.prepare("SELECT id FROM empresas WHERE codigo_licenca = '4' OR id = 4").get();
-  if (!pulpoEmpresa) {
-    try {
-      db.prepare(`
-        INSERT INTO empresas (
-          id, codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, data_adesao,
-          razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf,
-          modo_operacao, percentual_comissao_padrao, ativo
-        ) VALUES (?, ?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(
-        4,
-        '4',
-        10,
-        350.00,
-        10,
-        'COLORADO LOGISTICA E TRANSPORTES LTDA',
-        'Colorado Transportes',
-        '48.912.345/0001-60',
-        '(41) 3999-4400',
-        'contato@colorado.com.br',
-        '48912345000160',
-        'Maringá',
-        'PR',
-        'agenciamento_repasse',
-        5.0
-      );
-      pulpoEmpresa = { id: 4 };
-    } catch (e) {
-      const ins = db.prepare(`
-        INSERT INTO empresas (
-          codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, data_adesao,
-          razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf,
-          modo_operacao, percentual_comissao_padrao, ativo
-        ) VALUES (?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(
-        '4',
-        10,
-        350.00,
-        10,
-        'COLORADO LOGISTICA E TRANSPORTES LTDA',
-        'Colorado Transportes',
-        '48.912.345/0001-60',
-        '(41) 3999-4400',
-        'contato@colorado.com.br',
-        '48912345000160',
-        'Maringá',
-        'PR',
-        'agenciamento_repasse',
-        5.0
-      );
-      pulpoEmpresa = { id: Number(ins.lastInsertRowid) };
-    }
-  }
-
-  // Garantir usuário admin da Licença 4 apenas se não existir usuário na licença 4
-  const usersEmp4Count = db.prepare('SELECT COUNT(*) as count FROM users WHERE empresa_id = ?').get(pulpoEmpresa.id);
-  if (!usersEmp4Count || usersEmp4Count.count === 0) {
-    const pulpoPassHash = bcrypt.hashSync('admin123', 10);
-    db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(pulpoEmpresa.id, 'Gerente Colorado', 'admin@pulpo.com', pulpoPassHash, 'admin');
-  }
-
-
-
-  // =========================================================================
-  // 5. GARANTIR A LICENÇA 3 (FSERVICE TRANSPORTES)
-  // =========================================================================
-  let fserviceEmpresa = db.prepare("SELECT id FROM empresas WHERE codigo_licenca = '3' OR id = 3").get();
-  const fserviceCertBase64 = "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";
-
-  if (!fserviceEmpresa) {
-    try {
-      db.prepare(`
-        INSERT INTO empresas (
-          id, codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, data_adesao,
-          razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf,
-          modo_operacao, percentual_comissao_padrao, ativo
-        ) VALUES (?, ?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(
-        3,
-        '3',
-        10,
-        350.00,
-        10,
-        'FSERV PRESTADORA DE SERVICOS DE ESCRITORIO LTDA',
-        'FSERVICE TRANSPORTES',
-        '33.590.616/0001-19',
-        '(44) 3255-1000',
-        'contato@fservice.com.br',
-        '33590616000119',
-        'Sabáudia',
-        'PR',
-        'padrao',
-        5.0
-      );
-      fserviceEmpresa = { id: 3 };
-    } catch (e) {
-      const ins = db.prepare(`
-        INSERT INTO empresas (
-          codigo_licenca, limite_logins, valor_mensalidade, dia_vencimento, data_adesao,
-          razao_social, nome_fantasia, cnpj, telefone, email, chave_pix, cidade, uf,
-          modo_operacao, percentual_comissao_padrao, ativo
-        ) VALUES (?, ?, ?, ?, DATE('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(
-        '3',
-        10,
-        350.00,
-        10,
-        'FSERV PRESTADORA DE SERVICOS DE ESCRITORIO LTDA',
-        'FSERVICE TRANSPORTES',
-        '33.590.616/0001-19',
-        '(44) 3255-1000',
-        'contato@fservice.com.br',
-        '33590616000119',
-        'Sabáudia',
-        'PR',
-        'padrao',
-        5.0
-      );
-      fserviceEmpresa = { id: Number(ins.lastInsertRowid) };
-    }
-  }
-
-  // Garantir usuário admin da Licença 3 apenas se não existir
-  const userFserv = db.prepare('SELECT id FROM users WHERE empresa_id = ?').get(fserviceEmpresa.id);
-  if (!userFserv) {
-    const fservicePassHash = bcrypt.hashSync('admin123', 10);
-    db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(fserviceEmpresa.id, 'FSERV Administrador', 'fserv@fserv.com', fservicePassHash, 'admin');
-  }
-
-  // Configuração Fiscal e Certificado A1 da FSERVICE
-  const fiscalEmp3 = db.prepare('SELECT id FROM empresa_fiscal_config WHERE empresa_id = ?').get(fserviceEmpresa.id);
-  if (fiscalEmp3) {
-    db.prepare(`
-      UPDATE empresa_fiscal_config SET
-        ambiente = 'homologacao',
-        serie_cte = 1,
-        ultimo_numero_cte = 2,
-        rntrc_padrao = '53148055',
-        aliquota_icms_padrao = 12.0,
-        cst_icms_padrao = '00',
-        cfop_padrao_estadual = '5353',
-        cfop_padrao_interestadual = '6353',
-        natureza_operacao = 'PRESTACAO DE SERVICO DE TRANSPORTE',
-        certificado_a1_base64 = ?,
-        certificado_senha = '09012611',
-        certificado_validade = '2027-01-09T16:56:04.000Z',
-        certificado_titular = 'FSERV PRESTADORA DE SERVICOS DE ESCRITORIO LTDA E:33590616000119',
-        certificado_cnpj = '33590616000119',
-        updated_at = CURRENT_TIMESTAMP
-      WHERE empresa_id = ?
-    `).run(fserviceCertBase64, fserviceEmpresa.id);
+  // Garantir que leonardo45893@gmail.com exista e tenha empresa_id = null
+  const leoUser = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get('leonardo45893@gmail.com');
+  if (leoUser) {
+    db.prepare("UPDATE users SET empresa_id = NULL, role = 'super_admin' WHERE id = ?").run(leoUser.id);
   } else {
     db.prepare(`
-      INSERT INTO empresa_fiscal_config (
-        empresa_id, ambiente, serie_cte, ultimo_numero_cte, rntrc_padrao,
-        aliquota_icms_padrao, cst_icms_padrao, cfop_padrao_estadual, cfop_padrao_interestadual,
-        natureza_operacao, certificado_a1_base64, certificado_senha,
-        certificado_validade, certificado_titular, certificado_cnpj
-      ) VALUES (?, 'homologacao', 1, 2, '53148055', 12.0, '00', '5353', '6353', 'PRESTACAO DE SERVICO DE TRANSPORTE', ?, '09012611', '2027-01-09T16:56:04.000Z', 'FSERV PRESTADORA DE SERVICOS DE ESCRITORIO LTDA E:33590616000119', '33590616000119')
-    `).run(fserviceEmpresa.id, fserviceCertBase64);
+      INSERT INTO users (empresa_id, name, email, password_hash, role)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(null, 'Leonardo Master', 'leonardo45893@gmail.com', masterPassHash, 'super_admin');
   }
+
+  // Garantir que qualquer usuário com role super_admin tenha empresa_id = NULL
+  try {
+    db.prepare("UPDATE users SET empresa_id = NULL WHERE role = 'super_admin'").run();
+  } catch (e) {}
 
 
 
