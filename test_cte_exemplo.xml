@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cteProc xmlns="http://www.portalfiscal.inf.br/cte" versao="4.00">
+  <CTe>
+    <infCte Id="CTe41260900000000000199570010000123451000123450">
+      <ide>
+        <nCT>12345</nCT>
+        <serie>1</serie>
+        <dhEmi>2026-09-08T10:00:00-03:00</dhEmi>
+        <xMunIni>Mafra</xMunIni>
+        <UFIni>SC</UFIni>
+        <xMunFim>Paranaguá</xMunFim>
+        <UFFim>PR</UFFim>
+      </ide>
+      <emit>
+        <CNPJ>00000000000199</CNPJ>
+        <xNome>Transportadora SisFrete Pro</xNome>
+      </emit>
+      <rem>
+        <CNPJ>11111111000111</CNPJ>
+        <xNome>Moinho Mafra</xNome>
+      </rem>
+      <dest>
+        <CNPJ>22222222000122</CNPJ>
+        <xNome>Cerealista Paranaguá</xNome>
+      </dest>
+      <vPrest>
+        <vTPrest>1500.00</vTPrest>
+        <vRec>1500.00</vRec>
+      </vPrest>
+      <infCTeNorm>
+        <infCarga>
+          <vCarga>85000.00</vCarga>
+          <proPred>Soja em Grãos</proPred>
+          <infQ>
+            <cUnid>01</cUnid>
+            <tpMed>PESO LIQUIDO</tpMed>
+            <qCarga>35510</qCarga>
+          </infQ>
+        </infCarga>
+      </infCTeNorm>
+    </infCte>
+  </CTe>
+</cteProc>

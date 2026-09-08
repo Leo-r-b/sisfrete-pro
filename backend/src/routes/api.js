@@ -20,6 +20,8 @@ const rastreamentoController = require('../controllers/rastreamentoController');
 const frotasController = require('../controllers/frotasController');
 const portalClienteController = require('../controllers/portalClienteController');
 const databaseExplorerController = require('../controllers/databaseExplorerController');
+const carregamentoController = require('../controllers/carregamentoController');
+const cartoService = require('../services/cartoService');
 const calculadoraAnttService = require('../services/calculadoraAnttService');
 const { consultarDistanciaRodoviaria } = require('../services/distanciaService');
 const cobrancaBancariaService = require('../services/cobrancaBancariaService');
@@ -133,6 +135,52 @@ router.get('/torre-controle', authMiddleware, rastreamentoController.getTorreCon
 router.post('/torre-controle/mover', authMiddleware, rastreamentoController.moverStatusViagem);
 router.post('/fretes/:id/rastreamento', authMiddleware, rastreamentoController.addEventoRastreamento);
 router.get('/fretes/:id/rastreamento-token', authMiddleware, rastreamentoController.gerarTokenRastreamento);
+
+// --- GESTÃO DE CARREGAMENTOS & MAPA OPERACIONAL EM TEMPO REAL ---
+router.get('/carregamentos', authMiddleware, carregamentoController.listCarregamentos);
+router.get('/carregamentos/:id', authMiddleware, carregamentoController.getCarregamentoById);
+router.post('/carregamentos', authMiddleware, carregamentoController.createCarregamento);
+router.put('/carregamentos/:id', authMiddleware, carregamentoController.updateCarregamento);
+router.delete('/carregamentos/:id', authMiddleware, carregamentoController.deleteCarregamento);
+router.post('/carregamentos/:id/importar-cte', authMiddleware, carregamentoController.uploadCteXml.any(), carregamentoController.importarCteCarregamento);
+
+// --- INTEGRAÇÃO CARTO (API, MAPAS & WORKFLOWS) ---
+router.get('/carto/config', authMiddleware, (req, res) => {
+  const empresaId = req.empresaId || 1;
+  const config = cartoService.getCartoConfig(empresaId);
+  return res.json({
+    organization: config.organization || 'clausa',
+    defaultBasemap: config.defaultBasemap || 'dark-matter',
+    connectionName: config.connectionName || 'carto_dw',
+    apiBaseUrl: config.apiBaseUrl || 'https://gcp-us-east1.api.carto.com',
+    workflowApiUrl: config.workflowApiUrl || '',
+    hasToken: Boolean(config.accessToken && config.accessToken.length > 5),
+    tokenMasked: config.accessToken ? `${config.accessToken.slice(0, 6)}...${config.accessToken.slice(-4)}` : '',
+    ativo: config.ativo
+  });
+});
+
+router.post('/carto/config', authMiddleware, requireRole(['admin', 'super_admin']), (req, res) => {
+  const empresaId = req.empresaId || 1;
+  const updated = cartoService.saveCartoConfig(req.body, empresaId);
+  return res.json({ message: 'Configurações da CARTO salvas com sucesso!', config: updated });
+});
+
+router.post('/carto/test', authMiddleware, async (req, res) => {
+  const { token, apiBaseUrl } = req.body;
+  const result = await cartoService.testCartoConnection(token, apiBaseUrl);
+  return res.json(result);
+});
+
+router.post('/carto/execute-workflow', authMiddleware, async (req, res) => {
+  try {
+    const empresaId = req.empresaId || 1;
+    const result = await cartoService.executeCartoWorkflow({ ...req.body, empresaId });
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // --- GESTÃO DE FROTAS & MANUTENÇÃO PREVENTIVA ---
 router.get('/frotas/manutencoes', authMiddleware, frotasController.listManutencoes);

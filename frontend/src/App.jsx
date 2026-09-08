@@ -11,6 +11,7 @@ import Relatorios from './pages/Relatorios';
 import SaasMasterPanel from './pages/SaasMasterPanel';
 import MdfeList from './pages/MdfeList';
 import TorreControle from './pages/TorreControle';
+import CarregamentosList from './pages/CarregamentosList';
 import FrotasManutencao from './pages/FrotasManutencao';
 import ImportarXmlList from './pages/ImportarXmlList';
 import PublicCanhotoUpload from './pages/PublicCanhotoUpload';
@@ -138,6 +139,11 @@ function MainApp() {
           title: isLicencaGestao ? 'Painel de Gestão de Pagamentos' : 'Painel Geral', 
           subtitle: isLicencaGestao ? 'Visão consolidada de pagamentos a freteiros, comissões e repasses' : 'Métricas executivas de transporte e fluxo financeiro' 
         };
+      case 'carregamentos':
+        return { 
+          title: 'Gestão de Carregamentos em Andamento', 
+          subtitle: 'Mapa operacional ao vivo, controle de caminhões por cidade, venda triangular e faturamento CT-e' 
+        };
       case 'fretes':
         return { 
           title: 'Emissão de Conhecimentos (CT-e 4.00)', 
@@ -229,6 +235,10 @@ function MainApp() {
               onOpenRecibo={handleOpenRecibo}
               onOpenLancamento={handleOpenLancamento}
             />
+          )}
+
+          {activeTab === 'carregamentos' && (
+            <CarregamentosList />
           )}
 
           {activeTab === 'fretes' && (

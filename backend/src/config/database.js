@@ -412,10 +412,82 @@ function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS carregamentos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      empresa_id INTEGER NOT NULL DEFAULT 1,
+      status TEXT DEFAULT 'carregando', -- 'carregando', 'aguardando_cte', 'concluido', 'cancelado'
+      
+      -- Motorista & Veículo
+      motorista_id INTEGER,
+      motorista_nome TEXT NOT NULL,
+      motorista_cpf TEXT,
+      motorista_telefone TEXT,
+      placa_cavalo TEXT NOT NULL,
+      placa_carreta TEXT,
+      tipo_veiculo TEXT DEFAULT 'Carreta LS',
+      freteiro_nome TEXT,
+      freteiro_documento TEXT,
+      
+      -- Origem / Onde está carregando
+      fornecedor_id INTEGER,
+      fornecedor_nome TEXT NOT NULL,
+      origem_cidade TEXT NOT NULL,
+      origem_uf TEXT NOT NULL,
+      origem_endereco TEXT,
+      latitude REAL,
+      longitude REAL,
+      
+      -- Venda Triangular / Intermediação
+      is_triangular INTEGER DEFAULT 0,
+      intermediador_id INTEGER,
+      intermediador_nome TEXT,
+      intermediador_cnpj TEXT,
+      intermediador_cidade TEXT,
+      intermediador_uf TEXT,
+      valor_repasse_combinado REAL DEFAULT 0,
+      
+      -- Destino
+      destino_cliente_id INTEGER,
+      destino_empresa_nome TEXT NOT NULL,
+      destino_cidade TEXT NOT NULL,
+      destino_uf TEXT NOT NULL,
+      
+      -- Condições Comerciais
+      tipo_carga TEXT,
+      tipo_negociacao TEXT DEFAULT 'por_kg', -- 'por_kg', 'por_ton', 'total_fechado'
+      valor_combinado_kg REAL DEFAULT 0,
+      peso_estimado_kg REAL DEFAULT 0,
+      valor_frete_estimado REAL DEFAULT 0,
+      valor_adiantamento_combinado REAL DEFAULT 0,
+      
+      -- Vínculo com CT-e / Frete
+      frete_id INTEGER,
+      numero_cte TEXT,
+      chave_cte TEXT,
+      numero_cte_2 TEXT,
+      chave_cte_2 TEXT,
+      peso_real_kg REAL DEFAULT 0,
+      valor_frete_motorista_real REAL DEFAULT 0,
+      valor_cte_total REAL DEFAULT 0,
+      valor_repasse_real REAL DEFAULT 0,
+      valor_por_fora REAL DEFAULT 0,
+      data_cte_importado DATETIME,
+      
+      -- Datas e Observações
+      data_inclusao DATETIME DEFAULT CURRENT_TIMESTAMP,
+      previsao_saida DATETIME,
+      observacoes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE CASCADE,
+      FOREIGN KEY (motorista_id) REFERENCES motoristas(id) ON DELETE SET NULL,
+      FOREIGN KEY (frete_id) REFERENCES fretes(id) ON DELETE SET NULL
+    );
   `);
 
   // Migrações dinâmicas de coluna para bases existentes
-  const tablesWithEmpresa = ['users', 'motoristas', 'clientes', 'fretes', 'adiantamentos_historico', 'empresa_config', 'empresa_fiscal_config', 'financeiro_titulos', 'mdfes', 'veiculos_manutencoes', 'veiculos_pneus', 'cobrancas_bancarias'];
+  const tablesWithEmpresa = ['users', 'motoristas', 'clientes', 'fretes', 'adiantamentos_historico', 'empresa_config', 'empresa_fiscal_config', 'financeiro_titulos', 'mdfes', 'veiculos_manutencoes', 'veiculos_pneus', 'cobrancas_bancarias', 'carregamentos'];
   for (const table of tablesWithEmpresa) {
     try {
       const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
@@ -426,6 +498,14 @@ function initDatabase() {
       console.warn(`Aviso: migração empresa_id em ${table}:`, e.message);
     }
   }
+
+  // Garantir coluna valor_por_fora em carregamentos
+  try {
+    const carregCols = db.prepare(`PRAGMA table_info(carregamentos)`).all().map(c => c.name);
+    if (!carregCols.includes('valor_por_fora')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN valor_por_fora REAL DEFAULT 0`);
+    }
+  } catch (e) {}
 
   // Migrações dinâmicas para a tabela empresas (código de licença, limite de logins, mensalidade, vencimento e modo operacional)
   try {
@@ -475,6 +555,7 @@ function initDatabase() {
 
   const newCols = [
     { name: 'tipo_operacao', def: "TEXT DEFAULT 'padrao'" },
+    { name: 'cliente_cnpj', def: 'TEXT' },
     { name: 'numero_cte_2', def: 'TEXT' },
     { name: 'serie_cte_2', def: 'TEXT' },
     { name: 'chave_cte_2', def: 'TEXT' },
@@ -498,6 +579,7 @@ function initDatabase() {
     { name: 'nfe_chave_2', def: 'TEXT' },
     // Colunas para Agenciamento & Repasse (Metodologia Pulpo / Licença 4 / Gestão de Pagamentos)
     { name: 'valor_frete_real', def: 'REAL DEFAULT 0' },
+    { name: 'valor_por_fora', def: 'REAL DEFAULT 0' },
     { name: 'percentual_comissao', def: 'REAL DEFAULT 5.0' },
     { name: 'valor_repasse', def: 'REAL DEFAULT 0' },
     { name: 'status_repasse', def: "TEXT DEFAULT 'pendente'" },

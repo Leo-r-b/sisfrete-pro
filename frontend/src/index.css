@@ -96,3 +96,10 @@
     background: #ffffff !important;
   }
 }
+
+/* Custom Leaflet Marker Reset */
+.custom-carregamento-marker {
+  background: transparent !important;
+  border: none !important;
+}
+

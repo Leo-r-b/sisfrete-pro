@@ -32,7 +32,8 @@ const SYNC_TABLES = [
   'mdfe_ctes_vinculados',
   'frete_eventos_rastreamento',
   'veiculos_manutencoes',
-  'veiculos_pneus'
+  'veiculos_pneus',
+  'carregamentos'
 ];
 
 let lastSyncTimestamp = 0;

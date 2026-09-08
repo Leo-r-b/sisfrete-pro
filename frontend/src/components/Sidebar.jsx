@@ -18,7 +18,8 @@ import {
   Upload,
   X,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Radio
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -44,6 +45,7 @@ export default function Sidebar({
 
   const allMenuItems = [
     { id: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
+    { id: 'carregamentos', label: 'Carregamentos', icon: Radio, badge: 'Ao Vivo' },
     { id: 'fretes', label: 'Emissão de CT-e 4.00', icon: Truck },
     { id: 'importar_xml', label: isLicencaGestao ? 'Importação & Rateio CT-e' : 'Importar XML / Terceiros', icon: Upload },
     { id: 'mdfe', label: 'Manifestos (MDF-e 3.00)', icon: Layers },
@@ -65,9 +67,9 @@ export default function Sidebar({
   //   exibe exatamente as abas da empresa (simulação fiel do que o cliente vê), mantendo sempre o botão '👑 Painel Master SaaS' no topo.
   // - Se não houver configuração explícita (null), aplica fallback padrão (isLicencaGestao ou todas as abas).
   const menuItems = modulosConfigurados
-    ? allMenuItems.filter(item => modulosConfigurados.includes(item.id))
+    ? allMenuItems.filter(item => modulosConfigurados.includes(item.id) || item.id === 'carregamentos')
     : (isLicencaGestao
-        ? allMenuItems.filter(item => !['fretes', 'mdfe', 'torre_controle', 'frotas'].includes(item.id))
+        ? allMenuItems.filter(item => !['fretes', 'mdfe', 'frotas'].includes(item.id))
         : allMenuItems);
 
   const handleNavClick = (id) => {
