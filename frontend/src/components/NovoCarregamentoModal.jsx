@@ -32,8 +32,19 @@ export default function NovoCarregamentoModal({
   const [motoristasCadastrados, setMotoristasCadastrados] = useState([]);
   const [clientesCadastrados, setClientesCadastrados] = useState([]);
 
-  // Modalidade de Operação (Gestão de Pagamentos, Subcontratação, Agenciamento)
-  const [modalidade, setModalidade] = useState(activeEmpresa?.modo_operacao || 'gestao_pagamentos');
+  // Modalidade de Operação: definida e herdada automaticamente da Licença da Empresa
+  const getLicencaModo = () => {
+    const raw = activeEmpresa?.modo_operacao || 'gestao_pagamentos';
+    return (raw === 'padrao' || raw === 'subcontratacao') ? 'subcontratacao' : raw;
+  };
+
+  const [modalidade, setModalidade] = useState(() => {
+    if (carregamentoParaEditar?.modalidade) {
+      const m = carregamentoParaEditar.modalidade;
+      return (m === 'padrao' || m === 'subcontratacao') ? 'subcontratacao' : m;
+    }
+    return getLicencaModo();
+  });
   
   // Condições Específicas de Subcontratação
   const [tipoCobrancaTomador, setTipoCobrancaTomador] = useState('mesmo_motorista');
@@ -115,7 +126,10 @@ export default function NovoCarregamentoModal({
 
     // Se for edição de carregamento existente
     if (carregamentoParaEditar) {
-      setModalidade(carregamentoParaEditar.modalidade || activeEmpresa?.modo_operacao || 'gestao_pagamentos');
+      const editModo = carregamentoParaEditar.modalidade
+        ? (carregamentoParaEditar.modalidade === 'padrao' ? 'subcontratacao' : carregamentoParaEditar.modalidade)
+        : getLicencaModo();
+      setModalidade(editModo);
       setMotoristaId(carregamentoParaEditar.motorista_id || '');
       setMotoristaNome(carregamentoParaEditar.motorista_nome || '');
       setMotoristaCpf(carregamentoParaEditar.motorista_cpf || '');
@@ -170,7 +184,7 @@ export default function NovoCarregamentoModal({
       setObservacoes(carregamentoParaEditar.observacoes || '');
     } else {
       // Limpar campos para novo registro
-      setModalidade(activeEmpresa?.modo_operacao || 'gestao_pagamentos');
+      setModalidade(getLicencaModo());
       setTipoCobrancaTomador('mesmo_motorista');
       setValorFreteTomadorKg('');
       setValorFreteTomadorTotal('');
@@ -412,84 +426,54 @@ export default function NovoCarregamentoModal({
         {/* Formulário Principal */}
         <form onSubmit={handleSubmit} className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
           
-          {/* BANNER SELETOR DE MODALIDADE */}
-          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Briefcase className="w-4 h-4 text-blue-400" />
-                Modalidade da Operação & Regra Financeira
-              </label>
-              <span className="text-[11px] text-slate-400">
-                Define o comportamento contábil ao importar o CT-e
-              </span>
+          {/* BANNER DA MODALIDADE OPERACIONAL DEFINIDA PELA LICENÇA */}
+          <div className={`p-3.5 sm:p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+            modalidade === 'gestao_pagamentos'
+              ? 'bg-amber-950/20 border-amber-500/30'
+              : modalidade === 'agenciamento_repasse'
+                ? 'bg-purple-950/20 border-purple-500/30'
+                : 'bg-blue-950/20 border-blue-500/30'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-xl border shrink-0 ${
+                modalidade === 'gestao_pagamentos'
+                  ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                  : modalidade === 'agenciamento_repasse'
+                    ? 'bg-purple-500/15 border-purple-500/30 text-purple-400'
+                    : 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+              }`}>
+                {modalidade === 'gestao_pagamentos' && <ShieldCheck className="w-5 h-5" />}
+                {modalidade === 'agenciamento_repasse' && <Handshake className="w-5 h-5" />}
+                {(modalidade === 'subcontratacao' || modalidade === 'padrao') && <Truck className="w-5 h-5" />}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Modalidade da Licença:</span>
+                  <span className={`text-xs font-bold ${
+                    modalidade === 'gestao_pagamentos'
+                      ? 'text-amber-400'
+                      : modalidade === 'agenciamento_repasse'
+                        ? 'text-purple-400'
+                        : 'text-blue-400'
+                  }`}>
+                    {modalidade === 'gestao_pagamentos' && 'Gestão de Pagamentos'}
+                    {modalidade === 'agenciamento_repasse' && 'Agenciamento & Repasse'}
+                    {(modalidade === 'subcontratacao' || modalidade === 'padrao') && 'Subcontratação Tradicional'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {modalidade === 'gestao_pagamentos' && 'Paga o freteiro (CT-e + Por Fora). Não gera contas a receber contábil.'}
+                  {modalidade === 'agenciamento_repasse' && 'Intermediação de fretes. Paga o freteiro e gera contas a receber da comissão/lucro retido.'}
+                  {(modalidade === 'subcontratacao' || modalidade === 'padrao') && 'Transportadora oficial. Fatura o Tomador (CT-e + Por Fora) e paga o motorista terceiro.'}
+                </p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {/* Opção 1: Gestão de Pagamentos */}
-              <button
-                type="button"
-                onClick={() => setModalidade('gestao_pagamentos')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                  modalidade === 'gestao_pagamentos'
-                    ? 'bg-amber-500/10 border-amber-500/60 shadow-lg shadow-amber-500/10'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'gestao_pagamentos' ? 'text-amber-400' : 'text-slate-300'}`}>
-                    <ShieldCheck className="w-4 h-4" />
-                    Gestão de Pagamentos
-                  </span>
-                  {modalidade === 'gestao_pagamentos' && <Check className="w-3.5 h-3.5 text-amber-400" />}
-                </div>
-                <p className="text-[10px] text-slate-400 leading-snug">
-                  Ex: Farimax / Embarcador. Paga o freteiro (CT-e + Por Fora). <strong className="text-amber-300/90">Não gera contas a receber.</strong>
-                </p>
-              </button>
-
-              {/* Opção 2: Subcontratação Tradicional */}
-              <button
-                type="button"
-                onClick={() => setModalidade('subcontratacao')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                  modalidade === 'subcontratacao'
-                    ? 'bg-blue-500/10 border-blue-500/60 shadow-lg shadow-blue-500/10'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'subcontratacao' ? 'text-blue-400' : 'text-slate-300'}`}>
-                    <Truck className="w-4 h-4" />
-                    Subcontratação
-                  </span>
-                  {modalidade === 'subcontratacao' && <Check className="w-3.5 h-3.5 text-blue-400" />}
-                </div>
-                <p className="text-[10px] text-slate-400 leading-snug">
-                  Transportadora oficial. <strong className="text-blue-300/90">Fatura o Tomador (CT-e + Por Fora)</strong> e paga o terceiro.
-                </p>
-              </button>
-
-              {/* Opção 3: Agenciamento & Repasse */}
-              <button
-                type="button"
-                onClick={() => setModalidade('agenciamento_repasse')}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                  modalidade === 'agenciamento_repasse'
-                    ? 'bg-purple-500/10 border-purple-500/60 shadow-lg shadow-purple-500/10'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'agenciamento_repasse' ? 'text-purple-400' : 'text-slate-300'}`}>
-                    <Handshake className="w-4 h-4" />
-                    Agenciamento & Repasse
-                  </span>
-                  {modalidade === 'agenciamento_repasse' && <Check className="w-3.5 h-3.5 text-purple-400" />}
-                </div>
-                <p className="text-[10px] text-slate-400 leading-snug">
-                  Intermediação de fretes. Paga o freteiro e <strong className="text-purple-300/90">recebe a comissão/lucro</strong> do frete.
-                </p>
-              </button>
+            <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
+              <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-slate-900/90 text-slate-300 border border-slate-700/80 flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-400" />
+                Definido na Licença
+              </span>
             </div>
           </div>
 

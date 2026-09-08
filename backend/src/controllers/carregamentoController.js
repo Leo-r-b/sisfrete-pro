@@ -289,7 +289,9 @@ const createCarregamento = (req, res) => {
 
     // Modalidade da Operação (Gestão de Pagamentos, Subcontratação, Agenciamento & Repasse)
     const empresaObj = db.prepare('SELECT modo_operacao, percentual_comissao_padrao FROM empresas WHERE id = ?').get(empresaId);
-    const modalidade = data.modalidade || empresaObj?.modo_operacao || 'gestao_pagamentos';
+    const licencaModoRaw = empresaObj?.modo_operacao || 'gestao_pagamentos';
+    const licencaModo = (licencaModoRaw === 'padrao' || licencaModoRaw === 'subcontratacao') ? 'subcontratacao' : licencaModoRaw;
+    let modalidade = data.modalidade ? (data.modalidade === 'padrao' ? 'subcontratacao' : data.modalidade) : licencaModo;
     const valorTomadorKg = Number(data.valor_frete_tomador_kg) || 0;
     const valorTomadorTotal = Number(data.valor_frete_tomador_total) || 0;
     const comissaoTipo = data.comissao_agenciamento_tipo || 'percentual';
@@ -475,7 +477,7 @@ const updateCarregamento = (req, res) => {
       WHERE id = ?
     `).run(
       data.status || existing.status,
-      data.modalidade || existing.modalidade || 'gestao_pagamentos',
+      ((data.modalidade || existing.modalidade) === 'padrao' ? 'subcontratacao' : (data.modalidade || existing.modalidade || 'gestao_pagamentos')),
       data.motorista_id !== undefined ? data.motorista_id : existing.motorista_id,
       data.motorista_nome ? data.motorista_nome.trim() : existing.motorista_nome,
       data.motorista_cpf !== undefined ? data.motorista_cpf : existing.motorista_cpf,

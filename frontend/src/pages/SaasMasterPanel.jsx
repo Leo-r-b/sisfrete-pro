@@ -34,7 +34,10 @@ import {
   Truck,
   Upload,
   Wrench,
-  Database
+  Database,
+  Briefcase,
+  Handshake,
+  Check
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -51,6 +54,7 @@ import DatabaseExplorer from '../components/DatabaseExplorer';
 
 export const MODULOS_SISTEMA = [
   { id: 'dashboard', nome: 'Painel Geral', desc: 'Métricas, gráficos executivos e margem de lucro' },
+  { id: 'carregamentos', nome: 'Carregamentos & Mapa Logístico', desc: 'Monitoramento em tempo real de caminhões e mapa de distribuição' },
   { id: 'fretes', nome: 'Emissão de CT-e 4.00', desc: 'Emissão própria oficial SEFAZ, DACTE e Piso ANTT', tagFiscal: true },
   { id: 'importar_xml', nome: 'Importar XML / Terceiros', desc: 'Importação de XMLs recebidos e rateio de fretes' },
   { id: 'mdfe', nome: 'Manifestos (MDF-e 3.00)', desc: 'Manifesto Eletrônico de Cargas Modelo 58', tagFiscal: true },
@@ -1905,32 +1909,130 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                 </div>
               </div>
 
-              {/* METODOLOGIA OPERACIONAL DA LICENÇA */}
-              <div className="p-4 rounded-2xl bg-indigo-950/25 border border-indigo-500/40 space-y-3">
-                <h4 className="font-bold text-indigo-300 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp className="h-3.5 w-3.5 text-indigo-400" />
-                  <span>Metodologia Operacional da Licença</span>
-                </h4>
+              {/* METODOLOGIA OPERACIONAL DA LICENÇA (DEFINE O COMPORTAMENTO DE TRABALHO) */}
+              <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/40 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h4 className="font-bold text-indigo-300 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <Briefcase className="h-4 w-4 text-indigo-400" />
+                    <span>Modalidade Operacional da Licença</span>
+                  </h4>
+                  <span className="text-[11px] text-slate-400">
+                    Define o fluxo contábil de fretes e as regras de carregamento
+                  </span>
+                </div>
 
-                <div className={`grid grid-cols-1 ${empresaForm.modo_operacao === 'agenciamento_repasse' ? 'sm:grid-cols-2' : ''} gap-3`}>
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Forma de Trabalho / Regra de Cálculo</label>
-                    <select
-                      value={empresaForm.modo_operacao}
-                      onChange={(e) => setEmpresaForm({ ...empresaForm, modo_operacao: e.target.value })}
-                      className="w-full bg-slate-900 border border-indigo-500/40 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="padrao">🚚 Subcontratação Tradicional (Freteiro)</option>
-                      <option value="agenciamento_repasse">📊 Agenciamento & Repasse (Comissão Fixa % + Repasse)</option>
-                      <option value="gestao_pagamentos">💼 Organização & Gestão de Pagamentos (Rateio Livre em R$)</option>
-                    </select>
-                  </div>
-
-                  {empresaForm.modo_operacao === 'agenciamento_repasse' && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Card 1: Gestão de Pagamentos */}
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaForm({ ...empresaForm, modo_operacao: 'gestao_pagamentos' })}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                      empresaForm.modo_operacao === 'gestao_pagamentos'
+                        ? 'bg-amber-500/10 border-amber-500/80 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500'
+                        : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
                     <div>
-                      <label className="block text-slate-300 font-semibold mb-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-bold flex items-center gap-1.5 ${
+                          empresaForm.modo_operacao === 'gestao_pagamentos' ? 'text-amber-400' : 'text-slate-300'
+                        }`}>
+                          <ShieldCheck className="w-4 h-4" />
+                          Gestão de Pagamentos
+                        </span>
+                        {empresaForm.modo_operacao === 'gestao_pagamentos' && (
+                          <span className="p-0.5 rounded-full bg-amber-500 text-slate-950">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 mb-2">
+                        Embarcador / Farimax
+                      </span>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Paga o freteiro (CT-e + Por Fora). <strong className="text-amber-300">Não gera contas a receber contábil.</strong> Ideal para empresas contratantes e embarcadores.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Card 2: Subcontratação Tradicional */}
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaForm({ ...empresaForm, modo_operacao: 'padrao' })}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                      empresaForm.modo_operacao === 'padrao' || empresaForm.modo_operacao === 'subcontratacao'
+                        ? 'bg-blue-500/10 border-blue-500/80 shadow-lg shadow-blue-500/10 ring-1 ring-blue-500'
+                        : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-bold flex items-center gap-1.5 ${
+                          empresaForm.modo_operacao === 'padrao' || empresaForm.modo_operacao === 'subcontratacao' ? 'text-blue-400' : 'text-slate-300'
+                        }`}>
+                          <Truck className="w-4 h-4" />
+                          Subcontratação Tradicional
+                        </span>
+                        {(empresaForm.modo_operacao === 'padrao' || empresaForm.modo_operacao === 'subcontratacao') && (
+                          <span className="p-0.5 rounded-full bg-blue-500 text-slate-950">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 mb-2">
+                        Transportadora Oficial
+                      </span>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Fatura o Tomador de Serviço <strong className="text-blue-300">(CT-e + Por Fora)</strong> e paga o terceiro. Gera a receber e a pagar.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Card 3: Agenciamento & Repasse */}
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaForm({ ...empresaForm, modo_operacao: 'agenciamento_repasse' })}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                      empresaForm.modo_operacao === 'agenciamento_repasse'
+                        ? 'bg-purple-500/10 border-purple-500/80 shadow-lg shadow-purple-500/10 ring-1 ring-purple-500'
+                        : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-bold flex items-center gap-1.5 ${
+                          empresaForm.modo_operacao === 'agenciamento_repasse' ? 'text-purple-400' : 'text-slate-300'
+                        }`}>
+                          <Handshake className="w-4 h-4" />
+                          Agenciamento & Repasse
+                        </span>
+                        {empresaForm.modo_operacao === 'agenciamento_repasse' && (
+                          <span className="p-0.5 rounded-full bg-purple-500 text-slate-950">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+                      </div>
+                      <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 mb-2">
+                        Intermediação de Cargas
+                      </span>
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        Intermediação de fretes. Paga o freteiro e <strong className="text-purple-300">recebe a comissão/lucro</strong> da agência.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {empresaForm.modo_operacao === 'agenciamento_repasse' && (
+                  <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-purple-200 text-xs font-bold mb-0.5">
                         Comissão Padrão da Agência (%)
                       </label>
+                      <p className="text-[11px] text-slate-400">
+                        Percentual padrão retido pela agência ao importar CT-e e ratear com freteiro.
+                      </p>
+                    </div>
+                    <div className="w-full sm:w-36">
                       <input
                         type="number"
                         step="0.1"
@@ -1938,19 +2040,11 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                         max="100"
                         value={empresaForm.percentual_comissao_padrao}
                         onChange={(e) => setEmpresaForm({ ...empresaForm, percentual_comissao_padrao: e.target.value })}
-                        className="w-full bg-slate-900 border border-indigo-500/40 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-slate-900 border border-purple-500/40 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-purple-400 text-center"
                       />
                     </div>
-                  )}
-                </div>
-
-                <p className="text-[11px] text-indigo-200/80 leading-relaxed">
-                  {empresaForm.modo_operacao === 'gestao_pagamentos'
-                    ? '💼 Modo Organização & Gestão de Pagamentos: Criado especificamente para empresas contratantes que são CLIENTES de agenciadores de frete. A empresa NÃO emite CT-e nem MDF-e (módulos fiscais e frotas ficam ocultos) e NÃO fatura frete a receber. O operador informa livremente os valores em R$ para cada parte (Freteiro, Agenciador e Repasse) no momento da importação do CT-e.'
-                    : empresaForm.modo_operacao === 'agenciamento_repasse'
-                    ? '💡 Modo Agenciamento & Repasse: Ao importar o CT-e, o operador digita o Frete Real. O sistema retém automaticamente a comissão da empresa e calcula o Valor de Repasse (CT-e - Frete Real - Comissão).'
-                    : '💡 Modo Subcontratação Padrão: Frete Venda - Frete Compra = Margem / Adiantamento e Saldo do Motorista.'}
-                </p>
+                  </div>
+                )}
               </div>
 
               {/* MÓDULOS E ABAS HABILITADAS PARA A LICENÇA */}
