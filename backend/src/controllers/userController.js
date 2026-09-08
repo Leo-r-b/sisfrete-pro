@@ -9,7 +9,7 @@ const listUsers = async (req, res) => {
     if (isSuper) {
       // Super Admin visualiza todos os usuários de todas as licenças
       users = db.prepare(`
-        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.created_at, u.updated_at,
+        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.empresas_permitidas, u.created_at, u.updated_at,
                COALESCE(e.nome_fantasia, e.razao_social, 'Empresa Matriz') as empresa_nome,
                COALESCE(e.codigo_licenca, CAST(e.id AS TEXT)) as codigo_licenca,
                e.cidade as empresa_cidade, e.uf as empresa_uf
@@ -20,7 +20,7 @@ const listUsers = async (req, res) => {
     } else {
       // Admin normal visualiza APENAS os colaboradores da sua própria licença (NUNCA super_admin)
       users = db.prepare(`
-        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.created_at, u.updated_at,
+        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.empresas_permitidas, u.created_at, u.updated_at,
                COALESCE(e.nome_fantasia, e.razao_social, 'Empresa Matriz') as empresa_nome,
                COALESCE(e.codigo_licenca, CAST(e.id AS TEXT)) as codigo_licenca,
                e.cidade as empresa_cidade, e.uf as empresa_uf
@@ -31,7 +31,20 @@ const listUsers = async (req, res) => {
       `).all(req.empresaId);
     }
 
-    return res.json(users);
+    const formatted = users.map(u => {
+      let allowed = [];
+      try {
+        allowed = u.empresas_permitidas ? JSON.parse(u.empresas_permitidas) : [];
+      } catch (e) {
+        allowed = [];
+      }
+      return {
+        ...u,
+        empresas_permitidas: Array.isArray(allowed) ? allowed : []
+      };
+    });
+
+    return res.json(formatted);
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao listar usuários.' });
   }
@@ -39,7 +52,7 @@ const listUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, role = 'operador', empresa_id, pode_alternar_empresa } = req.body;
+    const { name, email, password, role = 'operador', empresa_id, pode_alternar_empresa, empresas_permitidas } = req.body;
     const isSuper = req.user.role === 'super_admin';
     
     // Se não for Super Admin, trava a criação obrigatoriamente na empresa do usuário logado/ativa
@@ -52,6 +65,15 @@ const createUser = async (req, res) => {
     // Apenas Super Admin pode criar outro super_admin
     const targetRole = (!isSuper && role === 'super_admin') ? 'operador' : role;
     const finalPodeAlternar = (targetRole === 'super_admin' || pode_alternar_empresa) ? 1 : 0;
+
+    let finalEmpresasPermitidas = '[]';
+    if (empresas_permitidas) {
+      if (Array.isArray(empresas_permitidas)) {
+        finalEmpresasPermitidas = JSON.stringify(empresas_permitidas.map(Number).filter(n => !isNaN(n)));
+      } else if (typeof empresas_permitidas === 'string') {
+        finalEmpresasPermitidas = empresas_permitidas;
+      }
+    }
 
     // Verificar limite de logins da licença
     const empresa = db.prepare('SELECT id, codigo_licenca, limite_logins FROM empresas WHERE id = ?').get(targetEmpresaId);
@@ -76,9 +98,9 @@ const createUser = async (req, res) => {
     const finalName = name.trim();
 
     const result = db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role, pode_alternar_empresa)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar);
+      INSERT INTO users (empresa_id, name, email, password_hash, role, pode_alternar_empresa, empresas_permitidas)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar, finalEmpresasPermitidas);
 
     const newUserId = Number(result.lastInsertRowid);
 
@@ -91,19 +113,27 @@ const createUser = async (req, res) => {
           authToken: process.env.TURSO_AUTH_TOKEN
         });
         await turso.execute({
-          sql: 'INSERT INTO users (id, empresa_id, name, email, password_hash, role, pode_alternar_empresa) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          args: [newUserId, finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar]
+          sql: 'INSERT INTO users (id, empresa_id, name, email, password_hash, role, pode_alternar_empresa, empresas_permitidas) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          args: [newUserId, finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar, finalEmpresasPermitidas]
         });
       } catch (tErr) {
         console.warn('Aviso sincronização createUser Turso:', tErr.message);
       }
     }
 
-    const created = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, created_at FROM users WHERE id = ?').get(newUserId);
+    const created = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, empresas_permitidas, created_at FROM users WHERE id = ?').get(newUserId);
+
+    let parsedAllowed = [];
+    try {
+      parsedAllowed = created.empresas_permitidas ? JSON.parse(created.empresas_permitidas) : [];
+    } catch (e) {}
 
     return res.status(201).json({
       message: 'Usuário cadastrado com sucesso!',
-      user: created,
+      user: {
+        ...created,
+        empresas_permitidas: parsedAllowed
+      },
     });
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao cadastrar usuário: ' + error.message });
@@ -113,7 +143,7 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, password, empresa_id, pode_alternar_empresa } = req.body;
+    const { name, email, role, password, empresa_id, pode_alternar_empresa, empresas_permitidas } = req.body;
     const isSuper = req.user.role === 'super_admin';
 
     const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -152,9 +182,18 @@ const updateUser = async (req, res) => {
       ? (pode_alternar_empresa ? 1 : 0) 
       : (existing.pode_alternar_empresa || 0);
 
+    let finalEmpresasPermitidas = existing.empresas_permitidas || '[]';
+    if (empresas_permitidas !== undefined) {
+      if (Array.isArray(empresas_permitidas)) {
+        finalEmpresasPermitidas = JSON.stringify(empresas_permitidas.map(Number).filter(n => !isNaN(n)));
+      } else if (typeof empresas_permitidas === 'string') {
+        finalEmpresasPermitidas = empresas_permitidas;
+      }
+    }
+
     db.prepare(`
       UPDATE users 
-      SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, updated_at = CURRENT_TIMESTAMP
+      SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, empresas_permitidas = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       targetEmpresaId,
@@ -163,6 +202,7 @@ const updateUser = async (req, res) => {
       targetRole,
       passwordHash,
       finalPodeAlternar,
+      finalEmpresasPermitidas,
       id
     );
 
@@ -175,19 +215,27 @@ const updateUser = async (req, res) => {
           authToken: process.env.TURSO_AUTH_TOKEN
         });
         await turso.execute({
-          sql: 'UPDATE users SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          args: [targetEmpresaId, finalName, finalEmail, targetRole, passwordHash, finalPodeAlternar, id]
+          sql: 'UPDATE users SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, empresas_permitidas = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          args: [targetEmpresaId, finalName, finalEmail, targetRole, passwordHash, finalPodeAlternar, finalEmpresasPermitidas, id]
         });
       } catch (tErr) {
         console.warn('Aviso sincronização updateUser Turso:', tErr.message);
       }
     }
 
-    const updated = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, updated_at FROM users WHERE id = ?').get(id);
+    const updated = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, empresas_permitidas, updated_at FROM users WHERE id = ?').get(id);
+
+    let parsedAllowed = [];
+    try {
+      parsedAllowed = updated.empresas_permitidas ? JSON.parse(updated.empresas_permitidas) : [];
+    } catch (e) {}
 
     return res.json({
       message: 'Usuário atualizado com sucesso!',
-      user: updated,
+      user: {
+        ...updated,
+        empresas_permitidas: parsedAllowed
+      },
     });
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao atualizar usuário: ' + error.message });

@@ -360,17 +360,19 @@ export default function Configuracoes() {
   // Gestão de Usuários com Múltiplas Permissões
   const handleOpenNewUser = () => {
     setEditingUser(null);
+    const defaultEmpId = Number(activeEmpresa?.id || user?.empresa_id || 1);
     setUserFormData({
       name: '',
       email: '',
       password: '',
       role: 'operador',
-      empresa_id: activeEmpresa?.id || user?.empresa_id || 1,
+      empresa_id: defaultEmpId,
       permiteOperacional: true,
       permiteFinanceiro: false,
       isAdminLicenca: false,
       isSuperAdminUser: false,
-      podeAlternarEmpresa: false
+      podeAlternarEmpresa: false,
+      empresasPermitidas: [defaultEmpId]
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -384,6 +386,13 @@ export default function Configuracoes() {
     const isOp = u.role === 'operador';
     const isFin = u.role === 'financeiro';
 
+    let permitidas = [];
+    if (Array.isArray(u.empresas_permitidas) && u.empresas_permitidas.length > 0) {
+      permitidas = u.empresas_permitidas.map(Number);
+    } else if (u.empresa_id) {
+      permitidas = [Number(u.empresa_id)];
+    }
+
     setUserFormData({
       name: u.name,
       email: u.email,
@@ -394,7 +403,8 @@ export default function Configuracoes() {
       permiteFinanceiro: isFin || isOpFin || isAdmin || isSuper,
       isAdminLicenca: isAdmin,
       isSuperAdminUser: isSuper,
-      podeAlternarEmpresa: Boolean(u.pode_alternar_empresa)
+      podeAlternarEmpresa: Boolean(u.pode_alternar_empresa),
+      empresasPermitidas: permitidas
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -423,13 +433,19 @@ export default function Configuracoes() {
     }
 
     try {
+      let finalEmpresas = [...(userFormData.empresasPermitidas || [])];
+      if (userFormData.podeAlternarEmpresa && finalEmpresas.length === 0 && userFormData.empresa_id) {
+        finalEmpresas = [Number(userFormData.empresa_id)];
+      }
+
       const payload = {
         name: userFormData.name,
         email: userFormData.email,
         password: userFormData.password,
         role: finalRole,
         empresa_id: userFormData.empresa_id,
-        pode_alternar_empresa: userFormData.podeAlternarEmpresa ? 1 : 0
+        pode_alternar_empresa: userFormData.podeAlternarEmpresa ? 1 : 0,
+        empresas_permitidas: finalEmpresas
       };
 
       if (editingUser) {
@@ -1169,18 +1185,22 @@ export default function Configuracoes() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleToggleMultiEmpresa(u)}
+                          onClick={() => handleOpenEditUser(u)}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer select-none ${
                             u.pode_alternar_empresa
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm shadow-emerald-500/20'
                               : 'bg-slate-800/90 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                           }`}
-                          title={u.pode_alternar_empresa ? "Clique para desativar a troca de empresas deste usuário" : "Clique para permitir que este usuário alterne entre empresas sem deslogar"}
+                          title="Clique para editar usuário e definir empresas autorizadas"
                         >
                           {u.pode_alternar_empresa ? (
                             <>
                               <Building2 className="h-3.5 w-3.5 text-emerald-400" />
-                              <span>🏢 Liberado</span>
+                              <span>
+                                🏢 {Array.isArray(u.empresas_permitidas) && u.empresas_permitidas.length > 0 
+                                  ? `${u.empresas_permitidas.length} Empresa${u.empresas_permitidas.length > 1 ? 's' : ''}` 
+                                  : 'Liberado'}
+                              </span>
                             </>
                           ) : (
                             <>
@@ -2560,29 +2580,89 @@ export default function Configuracoes() {
 
                 {/* Permissão Multi-Empresas (Alternar entre Empresas sem deslogar) */}
                 {!userFormData.isSuperAdminUser && (
-                  <div 
-                    onClick={() => setUserFormData(prev => ({ ...prev, podeAlternarEmpresa: !prev.podeAlternarEmpresa }))}
-                    className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
-                      userFormData.podeAlternarEmpresa 
-                        ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(userFormData.podeAlternarEmpresa)}
-                      onChange={() => {}}
-                      className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
-                    />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Novo</span>
+                  <div className="space-y-2">
+                    <div 
+                      onClick={() => setUserFormData(prev => ({ ...prev, podeAlternarEmpresa: !prev.podeAlternarEmpresa }))}
+                      className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                        userFormData.podeAlternarEmpresa 
+                          ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(userFormData.podeAlternarEmpresa)}
+                        onChange={() => {}}
+                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                      />
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Novo</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                          Permite ao colaborador alternar entre as empresas autorizadas diretamente pelo seletor superior, sem deslogar.
+                        </p>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                        Permite ao colaborador alternar entre as empresas/licenças cadastradas diretamente pelo seletor superior, sem precisar deslogar da conta. Não concede acesso ao Painel Master nem funções de faturamento.
-                      </p>
                     </div>
+
+                    {userFormData.podeAlternarEmpresa && (
+                      <div className="p-3 rounded-xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-indigo-300">
+                            Empresas Autorizadas ({userFormData.empresasPermitidas?.length || 0}):
+                          </span>
+                          <div className="flex gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => setUserFormData(prev => ({ 
+                                ...prev, 
+                                empresasPermitidas: (empresasDetailedList.length > 0 ? empresasDetailedList : empresas).map(e => Number(e.id)) 
+                              }))}
+                              className="text-blue-400 hover:underline"
+                            >
+                              Todas
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUserFormData(prev => ({ ...prev, empresasPermitidas: [Number(prev.empresa_id || 1)] }))}
+                              className="text-slate-400 hover:underline"
+                            >
+                              Apenas Origem
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                          {(empresasDetailedList.length > 0 ? empresasDetailedList : empresas).map((emp) => {
+                            const empId = Number(emp.id);
+                            const isChecked = userFormData.empresasPermitidas?.includes(empId) || empId === Number(userFormData.empresa_id);
+                            return (
+                              <label key={emp.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-900 cursor-pointer text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setUserFormData(prev => {
+                                      const current = prev.empresasPermitidas || [];
+                                      const next = current.includes(empId)
+                                        ? current.filter(id => id !== empId)
+                                        : [...current, empId];
+                                      return { ...prev, empresasPermitidas: next };
+                                    });
+                                  }}
+                                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <span className="text-white font-medium">{emp.nome_fantasia || emp.razao_social}</span>
+                                <span className="text-slate-500 text-[10px] font-mono">#{emp.codigo_licenca || emp.id}</span>
+                                {empId === Number(userFormData.empresa_id) && (
+                                  <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded ml-auto">Origem</span>
+                                )}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

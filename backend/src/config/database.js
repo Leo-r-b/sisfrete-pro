@@ -89,6 +89,7 @@ function initDatabase() {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'operador', -- admin, financeiro, operador, super_admin
       pode_alternar_empresa INTEGER DEFAULT 0, -- 1 = Pode alternar entre empresas/licenças sem deslogar
+      empresas_permitidas TEXT DEFAULT '[]', -- JSON array com IDs das empresas liberadas pelo Master, ex: "[13, 15]"
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE SET NULL
@@ -791,6 +792,11 @@ function initDatabase() {
     // Garantir coluna pode_alternar_empresa em users
     try {
       db.exec("ALTER TABLE users ADD COLUMN pode_alternar_empresa INTEGER DEFAULT 0");
+    } catch (e) {}
+
+    // Garantir coluna empresas_permitidas em users
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN empresas_permitidas TEXT DEFAULT '[]'");
     } catch (e) {}
 
 

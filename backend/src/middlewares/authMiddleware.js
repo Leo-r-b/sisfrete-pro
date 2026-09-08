@@ -58,8 +58,43 @@ function authMiddleware(req, res, next) {
         // Super Admin opera em modo global desvinculado
         req.empresaId = null;
       }
-    } else if (podeAlternar && headerEmpresaId && !isNaN(parseInt(headerEmpresaId, 10))) {
-      req.empresaId = parseInt(headerEmpresaId, 10);
+    } else if (podeAlternar) {
+      // Usuário comum com permissão para alternar:
+      // Pode chavear SOMENTE para as empresas expressamente autorizadas pelo Master
+      try {
+        const db = require('../config/database');
+        const u = db.prepare('SELECT pode_alternar_empresa, empresas_permitidas, empresa_id FROM users WHERE id = ?').get(req.user.id);
+        
+        let allowedIds = [];
+        if (u?.empresa_id) allowedIds.push(parseInt(u.empresa_id, 10));
+        if (u?.empresas_permitidas) {
+          try {
+            const parsed = JSON.parse(u.empresas_permitidas);
+            if (Array.isArray(parsed)) {
+              parsed.forEach(id => {
+                const num = parseInt(id, 10);
+                if (!isNaN(num) && !allowedIds.includes(num)) allowedIds.push(num);
+              });
+            }
+          } catch (e) {}
+        }
+        if (allowedIds.length === 0) {
+          allowedIds = [u?.empresa_id ? parseInt(u.empresa_id, 10) : (req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1)];
+        }
+
+        if (headerEmpresaId && !isNaN(parseInt(headerEmpresaId, 10))) {
+          const targetId = parseInt(headerEmpresaId, 10);
+          if (allowedIds.includes(targetId)) {
+            req.empresaId = targetId;
+          } else {
+            return res.status(403).json({ error: 'Acesso negado. Você não tem autorização para operar nesta empresa/licença.' });
+          }
+        } else {
+          req.empresaId = u?.empresa_id ? parseInt(u.empresa_id, 10) : (req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1);
+        }
+      } catch (err) {
+        req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1;
+      }
     } else {
       req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1;
     }

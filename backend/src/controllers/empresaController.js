@@ -787,14 +787,45 @@ const listEmpresasDisponiveis = async (req, res) => {
       return res.json(empresa);
     }
 
-    // Usuário autorizado (Super Admin ou permissão pode_alternar_empresa):
-    // Retorna todas as empresas ativas sem expor métricas financeiras sensíveis do SaaS
+    if (isSuper) {
+      // Super Admin: visualiza todas as empresas ativas do ecossistema
+      const empresas = db.prepare(`
+        SELECT id, id as codigo, codigo_licenca, razao_social, nome_fantasia, cidade, uf, modo_operacao
+        FROM empresas
+        WHERE ativo = 1
+        ORDER BY id ASC
+      `).all();
+      return res.json(empresas);
+    }
+
+    // Usuário comum com permissão pode_alternar_empresa:
+    // Retorna EXCLUSIVAMENTE as empresas autorizadas pelo Master
+    const u = db.prepare('SELECT empresa_id, pode_alternar_empresa, empresas_permitidas FROM users WHERE id = ?').get(req.user.id);
+    let allowedIds = [];
+    if (u?.empresa_id) allowedIds.push(parseInt(u.empresa_id, 10));
+    if (u?.empresas_permitidas) {
+      try {
+        const parsed = JSON.parse(u.empresas_permitidas);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(id => {
+            const num = parseInt(id, 10);
+            if (!isNaN(num) && !allowedIds.includes(num)) allowedIds.push(num);
+          });
+        }
+      } catch (e) {}
+    }
+
+    if (allowedIds.length === 0) {
+      allowedIds = [u?.empresa_id ? parseInt(u.empresa_id, 10) : 1];
+    }
+
+    const placeholders = allowedIds.map(() => '?').join(',');
     const empresas = db.prepare(`
       SELECT id, id as codigo, codigo_licenca, razao_social, nome_fantasia, cidade, uf, modo_operacao
       FROM empresas
-      WHERE ativo = 1
+      WHERE ativo = 1 AND id IN (${placeholders})
       ORDER BY id ASC
-    `).all();
+    `).all(...allowedIds);
 
     return res.json(empresas);
   } catch (error) {

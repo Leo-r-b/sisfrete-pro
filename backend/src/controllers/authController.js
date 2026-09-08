@@ -182,6 +182,11 @@ const login = async (req, res) => {
     };
     const token = generateToken(userPayload);
 
+    let allowedEmpresas = [];
+    try {
+      allowedEmpresas = user.empresas_permitidas ? JSON.parse(user.empresas_permitidas) : [];
+    } catch (e) {}
+
     return res.json({
       message: 'Login realizado com sucesso!',
       token,
@@ -191,6 +196,7 @@ const login = async (req, res) => {
         email: user.email,
         role: user.role,
         pode_alternar_empresa: Boolean(user.pode_alternar_empresa),
+        empresas_permitidas: Array.isArray(allowedEmpresas) ? allowedEmpresas : [],
         empresa_id: empresa?.id || user.empresa_id || 1,
         codigo_licenca: empresa?.codigo_licenca || String(empresa?.id || 1),
         empresa_nome: empresa?.nome_fantasia || empresa?.razao_social || 'Empresa Matriz',
@@ -213,7 +219,7 @@ const login = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = Number(req.user.id);
-    const user = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, created_at FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, empresas_permitidas, created_at FROM users WHERE id = ?').get(userId);
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
@@ -223,9 +229,15 @@ const getProfile = async (req, res) => {
       empresa = db.prepare('SELECT * FROM empresas WHERE id = ?').get(user.empresa_id);
     }
 
+    let allowedEmpresas = [];
+    try {
+      allowedEmpresas = user.empresas_permitidas ? JSON.parse(user.empresas_permitidas) : [];
+    } catch (e) {}
+
     return res.json({
       ...user,
       pode_alternar_empresa: Boolean(user.pode_alternar_empresa || user.role === 'super_admin'),
+      empresas_permitidas: Array.isArray(allowedEmpresas) ? allowedEmpresas : [],
       empresa,
       codigo_licenca: empresa?.codigo_licenca || (user.empresa_id ? String(user.empresa_id) : 'MASTER'),
       empresa_nome: empresa?.nome_fantasia || empresa?.razao_social || 'Painel Master SaaS',

@@ -368,6 +368,7 @@ async function migrateTurso() {
     await safeAddColumn('users', 'cliente_id', 'INTEGER');
     await safeAddColumn('users', 'is_cliente_portal', 'INTEGER DEFAULT 0');
     await safeAddColumn('users', 'pode_alternar_empresa', 'INTEGER DEFAULT 0');
+    await safeAddColumn('users', 'empresas_permitidas', "TEXT DEFAULT '[]'");
     await safeAddColumn('fretes', 'empresa_id', 'INTEGER DEFAULT 1');
     await safeAddColumn('fretes', 'valor_frete_real', 'REAL DEFAULT 0');
     await safeAddColumn('fretes', 'percentual_comissao', 'REAL DEFAULT 5.0');

@@ -37,7 +37,8 @@ import {
   Database,
   Briefcase,
   Handshake,
-  Check
+  Check,
+  Settings
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -147,11 +148,20 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     password: '',
     role: 'admin',
     empresa_id: 1,
+    pode_alternar_empresa: false,
+    empresas_permitidas: [],
   });
   const [usersList, setUsersList] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [userModalError, setUserModalError] = useState('');
   const [userFilterEmpresa, setUserFilterEmpresa] = useState('todas');
+
+  // Modal Permissões Multi-Empresas Específicas
+  const [isPermissoesModalOpen, setIsPermissoesModalOpen] = useState(false);
+  const [permissoesUser, setPermissoesUser] = useState(null);
+  const [permissoesPodeAlternar, setPermissoesPodeAlternar] = useState(false);
+  const [permissoesSelectedEmpresas, setPermissoesSelectedEmpresas] = useState([]);
+  const [savingPermissoes, setSavingPermissoes] = useState(false);
 
   // Carregar Dashboard SaaS
   const loadDashboard = async () => {
@@ -435,13 +445,15 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
   // Salvar Usuário Global
   const handleOpenNewUser = () => {
     setEditingUser(null);
+    const defaultEmpresaId = empresas[0]?.id || 1;
     setUserForm({
       name: '',
       email: '',
       password: '',
       role: 'admin',
-      empresa_id: empresas[0]?.id || 1,
+      empresa_id: defaultEmpresaId,
       pode_alternar_empresa: false,
+      empresas_permitidas: [Number(defaultEmpresaId)],
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -449,6 +461,12 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
 
   const handleOpenEditUser = (u) => {
     setEditingUser(u);
+    let permitidas = [];
+    if (Array.isArray(u.empresas_permitidas) && u.empresas_permitidas.length > 0) {
+      permitidas = u.empresas_permitidas.map(Number);
+    } else if (u.empresa_id) {
+      permitidas = [Number(u.empresa_id)];
+    }
     setUserForm({
       name: u.name,
       email: u.email,
@@ -456,6 +474,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
       role: u.role,
       empresa_id: u.empresa_id || empresas[0]?.id || 1,
       pode_alternar_empresa: Boolean(u.pode_alternar_empresa),
+      empresas_permitidas: permitidas,
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -467,7 +486,8 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     try {
       const payload = {
         ...userForm,
-        pode_alternar_empresa: userForm.pode_alternar_empresa ? 1 : 0
+        pode_alternar_empresa: userForm.pode_alternar_empresa ? 1 : 0,
+        empresas_permitidas: userForm.empresas_permitidas || []
       };
       if (editingUser) {
         await api.put(`/users/${editingUser.id}`, payload);
@@ -481,7 +501,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     }
   };
 
-    const handleDeleteUser = async (id, name) => {
+  const handleDeleteUser = async (id, name) => {
     if (!window.confirm(`Deseja excluir o usuário "${name}"?`)) return;
     try {
       await api.delete(`/users/${id}`);
@@ -491,16 +511,65 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     }
   };
 
-  const handleToggleMultiEmpresa = async (targetUser) => {
+  // Abrir Modal Dedicado de Empresas Permitidas
+  const handleOpenPermissoesModal = (targetUser) => {
     if (targetUser.role === 'super_admin') return;
-    const novoValor = !targetUser.pode_alternar_empresa;
+    setPermissoesUser(targetUser);
+    setPermissoesPodeAlternar(Boolean(targetUser.pode_alternar_empresa));
+    
+    let permitidas = [];
+    if (Array.isArray(targetUser.empresas_permitidas) && targetUser.empresas_permitidas.length > 0) {
+      permitidas = targetUser.empresas_permitidas.map(Number);
+    } else if (targetUser.empresa_id) {
+      permitidas = [Number(targetUser.empresa_id)];
+    }
+    setPermissoesSelectedEmpresas(permitidas);
+    setIsPermissoesModalOpen(true);
+  };
+
+  const handleToggleEmpresaPermissao = (empId) => {
+    const idNum = Number(empId);
+    setPermissoesSelectedEmpresas(prev => {
+      if (prev.includes(idNum)) {
+        return prev.filter(id => id !== idNum);
+      } else {
+        return [...prev, idNum];
+      }
+    });
+  };
+
+  const handleSelectAllPermissoes = () => {
+    setPermissoesSelectedEmpresas(empresas.map(e => Number(e.id)));
+  };
+
+  const handleClearPermissoes = () => {
+    if (permissoesUser?.empresa_id) {
+      setPermissoesSelectedEmpresas([Number(permissoesUser.empresa_id)]);
+    } else {
+      setPermissoesSelectedEmpresas([]);
+    }
+  };
+
+  const handleSavePermissoes = async (e) => {
+    if (e) e.preventDefault();
+    if (!permissoesUser) return;
+    setSavingPermissoes(true);
     try {
-      await api.put(`/users/${targetUser.id}`, {
-        pode_alternar_empresa: novoValor ? 1 : 0
+      let finalEmpresas = [...permissoesSelectedEmpresas];
+      if (permissoesPodeAlternar && finalEmpresas.length === 0 && permissoesUser.empresa_id) {
+        finalEmpresas = [Number(permissoesUser.empresa_id)];
+      }
+
+      await api.put(`/users/${permissoesUser.id}`, {
+        pode_alternar_empresa: permissoesPodeAlternar ? 1 : 0,
+        empresas_permitidas: finalEmpresas
       });
+      setIsPermissoesModalOpen(false);
       await loadGlobalUsers();
     } catch (err) {
-      alert(err.response?.data?.error || 'Erro ao alterar permissão multi-empresa.');
+      alert(err.response?.data?.error || 'Erro ao salvar permissões de empresas.');
+    } finally {
+      setSavingPermissoes(false);
     }
   };
 
@@ -1511,18 +1580,23 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => handleToggleMultiEmpresa(u)}
+                            onClick={() => handleOpenPermissoesModal(u)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer select-none ${
                               u.pode_alternar_empresa
                                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm shadow-emerald-500/20'
                                 : 'bg-slate-800/90 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
                             }`}
-                            title={u.pode_alternar_empresa ? "Clique para desativar a troca de empresas deste usuário" : "Clique para permitir que este usuário alterne entre empresas sem deslogar"}
+                            title="Clique para definir exatamente quais empresas este usuário pode acessar"
                           >
                             {u.pode_alternar_empresa ? (
                               <>
                                 <Building2 className="h-3.5 w-3.5 text-emerald-400" />
-                                <span>🏢 Liberado</span>
+                                <span>
+                                  🏢 {Array.isArray(u.empresas_permitidas) && u.empresas_permitidas.length > 0 
+                                    ? `${u.empresas_permitidas.length} Empresa${u.empresas_permitidas.length > 1 ? 's' : ''}` 
+                                    : 'Liberado'}
+                                </span>
+                                <Settings className="h-3 w-3 text-emerald-400/80 ml-0.5" />
                               </>
                             ) : (
                               <>
@@ -2460,29 +2534,86 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
 
               {/* Permissão Multi-Empresas */}
               {userForm.role !== 'super_admin' && (
-                <div 
-                  onClick={() => setUserForm(prev => ({ ...prev, pode_alternar_empresa: !prev.pode_alternar_empresa }))}
-                  className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
-                    userForm.pode_alternar_empresa 
-                      ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
-                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-600'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={Boolean(userForm.pode_alternar_empresa)}
-                    onChange={() => {}}
-                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
-                  />
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Novo</span>
+                <div className="space-y-2">
+                  <div 
+                    onClick={() => setUserForm(prev => ({ ...prev, pode_alternar_empresa: !prev.pode_alternar_empresa }))}
+                    className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                      userForm.pode_alternar_empresa 
+                        ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-600'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(userForm.pode_alternar_empresa)}
+                      onChange={() => {}}
+                      className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Configurável</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                        Permite que este colaborador alterne entre as empresas autorizadas sem deslogar.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                      Permite que este colaborador alterne entre empresas diretamente pelo cabeçalho sem deslogar, mantendo seu nível de acesso.
-                    </p>
                   </div>
+
+                  {userForm.pode_alternar_empresa && (
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-indigo-300">
+                          Empresas Autorizadas ({userForm.empresas_permitidas?.length || 0}):
+                        </span>
+                        <div className="flex gap-2 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setUserForm(prev => ({ ...prev, empresas_permitidas: empresas.map(e => Number(e.id)) }))}
+                            className="text-blue-400 hover:underline"
+                          >
+                            Todas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUserForm(prev => ({ ...prev, empresas_permitidas: [Number(prev.empresa_id || 1)] }))}
+                            className="text-slate-400 hover:underline"
+                          >
+                            Apenas Origem
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                        {empresas.map((emp) => {
+                          const empId = Number(emp.id);
+                          const isChecked = userForm.empresas_permitidas?.includes(empId) || empId === Number(userForm.empresa_id);
+                          return (
+                            <label key={emp.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-900 cursor-pointer text-xs">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  setUserForm(prev => {
+                                    const current = prev.empresas_permitidas || [];
+                                    const next = current.includes(empId)
+                                      ? current.filter(id => id !== empId)
+                                      : [...current, empId];
+                                    return { ...prev, empresas_permitidas: next };
+                                  });
+                                }}
+                                className="rounded text-indigo-600 focus:ring-indigo-500"
+                              />
+                              <span className="text-white font-medium">{emp.nome_fantasia || emp.razao_social}</span>
+                              <span className="text-slate-500 text-[10px] font-mono">#{emp.codigo_licenca || emp.id}</span>
+                              {empId === Number(userForm.empresa_id) && (
+                                <span className="text-[9px] bg-blue-500/20 text-blue-300 px-1 rounded ml-auto">Origem</span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2502,6 +2633,196 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 5: DEFINIR EMPRESAS PERMITIDAS PARA O USUÁRIO (MULTI-EMPRESA) */}
+      {/* ========================================================================= */}
+      {isPermissoesModalOpen && permissoesUser && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-indigo-400">
+                <Building2 className="h-5 w-5" />
+                <div>
+                  <h3 className="font-heading font-bold text-base text-white">
+                    Empresas Permitidas: {permissoesUser.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Defina com precisão quais empresas e licenças este usuário poderá alternar.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsPermissoesModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Informações do Usuário */}
+            <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 block">Login / E-mail:</span>
+                <span className="text-white font-mono font-medium">{permissoesUser.email}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 block">Licença de Origem:</span>
+                <span className="text-indigo-300 font-bold font-mono">
+                  ID #{permissoesUser.empresa_id || 1} • {permissoesUser.empresa_nome || 'Matriz'}
+                </span>
+              </div>
+            </div>
+
+            {/* Chave Master de Permissão */}
+            <div 
+              onClick={() => setPermissoesPodeAlternar(!permissoesPodeAlternar)}
+              className={`p-3.5 rounded-2xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                permissoesPodeAlternar 
+                  ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-md' 
+                  : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-600'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={permissoesPodeAlternar}
+                onChange={() => {}}
+                className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5">
+                  <strong className="text-xs text-white block">Liberar Alternância de Empresas para este Colaborador</strong>
+                  {permissoesPodeAlternar ? (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                      Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-700 text-slate-300 font-bold">
+                      Desativado
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                  {permissoesPodeAlternar
+                    ? 'O usuário poderá trocar entre as empresas marcadas abaixo pelo topo do sistema.'
+                    : 'O usuário ficará bloqueado e fixo apenas na sua licença de origem.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Seleção de Empresas Autorizadas */}
+            {permissoesPodeAlternar && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <span>Empresas Autorizadas</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+                      {permissoesSelectedEmpresas.length} de {empresas.length}
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllPermissoes}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer"
+                    >
+                      Selecionar Todas
+                    </button>
+                    <span className="text-slate-600">•</span>
+                    <button
+                      type="button"
+                      onClick={handleClearPermissoes}
+                      className="text-[11px] text-slate-400 hover:text-slate-300 font-medium cursor-pointer"
+                    >
+                      Apenas Origem
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 rounded-2xl bg-slate-950/60 border border-slate-800 p-2">
+                  {empresas.map((emp) => {
+                    const empId = Number(emp.id);
+                    const isChecked = permissoesSelectedEmpresas.includes(empId);
+                    const isOrigem = empId === Number(permissoesUser.empresa_id);
+
+                    return (
+                      <div
+                        key={emp.id}
+                        onClick={() => handleToggleEmpresaPermissao(empId)}
+                        className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between select-none ${
+                          isChecked
+                            ? 'bg-indigo-950/30 border-indigo-500/40 hover:border-indigo-400'
+                            : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700 opacity-60 hover:opacity-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white">
+                                {emp.nome_fantasia || emp.razao_social}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold">
+                                ID #{emp.codigo_licenca || emp.id}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              {emp.cidade ? `${emp.cidade} - ${emp.uf}` : 'Empresa Ativa'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isOrigem && (
+                          <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                            Licença de Origem
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="text-[11px] text-slate-400 px-1">
+                  🔒 O usuário NÃO terá acesso a nenhuma empresa que não esteja marcada aqui.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsPermissoesModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePermissoes}
+                disabled={savingPermissoes}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition disabled:opacity-50 cursor-pointer flex items-center gap-2"
+              >
+                {savingPermissoes ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    <span>Salvar Empresas Autorizadas</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
