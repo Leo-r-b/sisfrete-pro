@@ -121,6 +121,7 @@ export function AuthProvider({ children }) {
       const payload = { email, password };
       if (empresaId) {
         payload.empresa_id = empresaId;
+        payload.licenca_id = empresaId;
       }
       const res = await api.post('/auth/login', payload);
       const { token: receivedToken, user: receivedUser } = res.data;

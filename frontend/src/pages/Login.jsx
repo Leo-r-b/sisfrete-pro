@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Login() {
   const { login } = useAuth();
   const [licencaId, setLicencaId] = useState(
-    localStorage.getItem('sisfrete_last_licenca_id') || '1'
+    localStorage.getItem('sisfrete_last_licenca_id') || ''
   );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,16 +74,16 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* ID DA EMPRESA / NÚMERO DA LICENÇA (OPCIONAL) */}
+            {/* NÚMERO DA LICENÇA */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-slate-300">
-                  ID da Licença <span className="text-[10px] text-slate-400 font-normal">(Opcional)</span>
+                  Número da Licença
                 </label>
                 {licencaId ? (
                   <span className="text-[10px] text-blue-400 font-mono font-bold">Licença #{licencaId}</span>
                 ) : (
-                  <span className="text-[10px] text-purple-400 font-mono font-bold">Global / Master</span>
+                  <span className="text-[10px] text-amber-400 font-mono font-semibold">Obrigatório (exceto Master)</span>
                 )}
               </div>
               <div className="relative">
@@ -92,12 +92,12 @@ export default function Login() {
                   type="text"
                   value={licencaId}
                   onChange={(e) => setLicencaId(e.target.value)}
-                  placeholder="Digite o número da licença"
+                  placeholder="Digite o número da sua licença"
                   className="w-full bg-slate-950/90 border border-slate-700 hover:border-blue-500/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition font-mono font-bold tracking-wider"
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                Deixe em branco para acesso Ghost Master / Login Global.
+                A licença correta é obrigatória para liberar o acesso. O usuário Master tem acesso livre com ou sem licença.
               </p>
             </div>
 

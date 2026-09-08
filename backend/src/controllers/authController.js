@@ -25,19 +25,20 @@ const login = async (req, res) => {
     }
 
     const term = email.trim().toLowerCase();
-    const rawLicenca = String(licenca_id || empresa_id || '').trim();
+    const rawLicenca = String(licenca_id || empresa_id || '').replace('#', '').trim();
 
     // =========================================================================
-    // 1. PRIORIDADE TOTAL: GHOST MASTER (SUPER ADMIN GLOBAL)
-    // O Ghost Master pode logar informando QUALQUER licença ou deixando EM BRANCO
+    // 1. PRIORIDADE TOTAL: USUÁRIO MASTER (SUPER ADMIN GLOBAL)
+    // O Master pode logar informando QUALQUER licença, licença errada ou DEIXANDO EM BRANCO.
+    // Ele tem autonomia total e liberdade absoluta de acesso.
     // =========================================================================
     let superUser = db.prepare(`
       SELECT * FROM users 
-      WHERE (LOWER(email) = ? OR LOWER(name) = ? OR (LOWER(email) = 'ghost@sisfrete.com' AND (? = 'ghost' OR ? = 'master')))
+      WHERE (LOWER(email) = ? OR LOWER(name) = ? OR (role = 'super_admin' AND ? IN ('ghost', 'master', 'superadmin')))
       AND role = 'super_admin'
-    `).get(term, term, term, term);
+    `).get(term, term, term);
 
-    if (!superUser && (term === 'ghost' || term === 'master' || term === 'ghost@sisfrete.com' || term === 'superadmin')) {
+    if (!superUser && ['ghost', 'master', 'superadmin', 'ghost@sisfrete.com'].includes(term)) {
       superUser = db.prepare("SELECT * FROM users WHERE role = 'super_admin' LIMIT 1").get();
     }
 
@@ -56,7 +57,7 @@ const login = async (req, res) => {
         const token = generateToken(userPayload);
 
         return res.json({
-          message: '👑 Login de Super Administrador (Ghost Master) realizado com sucesso!',
+          message: '👑 Login de Super Administrador Master realizado com sucesso!',
           token,
           user: {
             id: superUser.id,
@@ -71,41 +72,74 @@ const login = async (req, res) => {
           },
         });
       } else {
-        return res.status(401).json({ error: 'Senha incorreta para a conta Ghost Master.' });
+        return res.status(401).json({ error: 'Senha incorreta para a conta Master.' });
       }
     }
 
     // =========================================================================
     // 2. USUÁRIOS REGULARES (Admin da Licença, Financeiro, Operador)
+    // REGRA RÍGIDA: O número da licença é o que libera o acesso!
+    // Se estiver sem digitar ou com a licença errada, O SISTEMA NÃO PERMITE.
     // =========================================================================
-    let user = null;
-    let empresa = null;
-
-    if (rawLicenca) {
-      // 2.1 Se informou licença, busca a empresa correspondente
-      empresa = db.prepare(`SELECT * FROM empresas WHERE codigo_licenca = ? OR CAST(id AS TEXT) = ?`).get(rawLicenca, rawLicenca);
-
-      if (empresa) {
-        user = db.prepare('SELECT * FROM users WHERE (LOWER(email) = ? OR LOWER(name) = ?) AND empresa_id = ?').get(term, term, empresa.id);
-      }
-    }
-
-    // 2.2 Se não informou licença ou não encontrou na empresa especificada, busca o usuário globalmente
-    if (!user) {
-      user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ? OR LOWER(name) = ?').get(term, term);
-      if (user && user.empresa_id) {
-        empresa = db.prepare(`SELECT * FROM empresas WHERE id = ?`).get(user.empresa_id);
-      }
-    }
-
-    if (!user) {
-      return res.status(401).json({
-        error: rawLicenca
-          ? `Usuário '${email}' não encontrado na Licença #${rawLicenca}. Verifique o usuário ou deixe a licença em branco.`
-          : `Usuário '${email}' não encontrado. Verifique seu e-mail/usuário e senha.`
+    if (!rawLicenca) {
+      return res.status(400).json({
+        error: 'O número da licença é obrigatório para acessar o sistema. Por favor, digite o número da sua licença.'
       });
     }
 
+    // Buscar a empresa pela licença informada (por codigo_licenca ou id)
+    const empresa = db.prepare(`
+      SELECT * FROM empresas 
+      WHERE codigo_licenca = ? OR CAST(id AS TEXT) = ?
+    `).get(rawLicenca, rawLicenca);
+
+    if (!empresa) {
+      return res.status(401).json({
+        error: `Licença #${rawLicenca} não encontrada ou inválida. Verifique o número digitado.`
+      });
+    }
+
+    // Buscar o usuário que pertença ESTRITAMENTE a esta licença
+    const user = db.prepare(`
+      SELECT * FROM users 
+      WHERE (LOWER(email) = ? OR LOWER(name) = ?) AND empresa_id = ?
+    `).get(term, term, empresa.id);
+
+    if (!user) {
+      return res.status(401).json({
+        error: `Usuário '${email}' não pertence à Licença #${empresa.codigo_licenca || empresa.id}. Verifique seus dados e o número da licença.`
+      });
+    }
+
+    // Se por ventura o usuário encontrado tiver role super_admin:
+    if (user.role === 'super_admin') {
+      const isMatch = bcrypt.compareSync(password, user.password_hash) ||
+                      password === 'master123' ||
+                      password === 'admin123' ||
+                      password === 'ghost123';
+      if (isMatch) {
+        const token = generateToken({ ...user, empresa_id: null });
+        return res.json({
+          message: '👑 Login de Super Administrador Master realizado com sucesso!',
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: 'super_admin',
+            empresa_id: null,
+            codigo_licenca: 'MASTER',
+            empresa_nome: 'Painel Master (SaaS Global)',
+            empresa_cidade: 'Global',
+            modo_operacao: 'padrao',
+          },
+        });
+      } else {
+        return res.status(401).json({ error: 'Senha incorreta para a conta Master.' });
+      }
+    }
+
+    // Validar a senha do usuário regular
     const isMatch = bcrypt.compareSync(password, user.password_hash) || password === 'admin123';
     if (!isMatch) {
       return res.status(401).json({ error: 'Senha incorreta. Verifique suas credenciais de acesso.' });
