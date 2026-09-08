@@ -2,9 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const path = require('node:path');
 const fs = require('node:fs');
-require('dotenv').config();
 
-// Inicializar banco de dados SQLite
+// Garantir carregamento robusto do .env em qualquer diretório de execução (Render / Local / VPS)
+const envBackend = path.resolve(__dirname, '../.env');
+if (fs.existsSync(envBackend)) {
+  require('dotenv').config({ path: envBackend });
+}
+require('dotenv').config(); // Fallback para process.cwd()
+
+// Inicializar banco de dados SQLite e sincronização Turso Cloud
 require('./config/database');
 
 const apiRoutes = require('./routes/api');

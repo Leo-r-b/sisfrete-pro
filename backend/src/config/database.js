@@ -795,4 +795,11 @@ function initDatabase() {
 
 initDatabase();
 
+// Conectar sincronização e replicação transparente com o Turso Cloud
+const { applyTursoHooks, syncFromTurso } = require('./tursoSync');
+applyTursoHooks(db);
+
+// Sincronizar em background ao iniciar o servidor (cold start do Render / restauração em nuvem)
+syncFromTurso(db).catch(err => console.warn('Aviso syncFromTurso inicial:', err.message));
+
 module.exports = db;
