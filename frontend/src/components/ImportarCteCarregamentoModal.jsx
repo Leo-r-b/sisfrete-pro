@@ -6,11 +6,15 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ArrowRight, 
+  ArrowDownRight,
+  ArrowUpRight,
   DollarSign, 
   Scale, 
   Truck, 
   Layers, 
-  Building2 
+  Building2,
+  ShieldCheck,
+  Handshake
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -76,7 +80,7 @@ export default function ImportarCteCarregamentoModal({
       const nMatch = xmlString.match(/<nCT>(\d+)<\/nCT>/i);
       if (nMatch) numeroCte = String(nMatch[1]).padStart(6, '0');
 
-      // 4. Parâmetros combinados do carregamento
+      // 4. Parâmetros combinados do carregamento & modalidade
       const pesoAprox = Number(carregamento.peso_estimado_kg) || 0;
       const valorKg = Number(carregamento.valor_combinado_kg) || 0;
       const estimativa = Number(carregamento.valor_frete_estimado) || Number((pesoAprox * valorKg).toFixed(2));
@@ -85,7 +89,44 @@ export default function ImportarCteCarregamentoModal({
       const valorReal = Number((pesoFinal * valorKg).toFixed(2));
       const valorPorFora = Number(Math.max(0, valorReal - valorCte).toFixed(2));
 
+      // Modalidade da Operação
+      const mod = carregamento.modalidade || 'gestao_pagamentos';
+      const isGestao = mod === 'gestao_pagamentos';
+      const isAgenciamento = mod === 'agenciamento_repasse';
+      const isSubcontratacao = !isGestao && !isAgenciamento;
+
+      let valorReceber = 0;
+      let valorReceberDesc = '';
+      if (isSubcontratacao) {
+        if (Number(carregamento.valor_frete_tomador_total) > 0) {
+          valorReceber = Number(carregamento.valor_frete_tomador_total);
+        } else if (Number(carregamento.valor_frete_tomador_kg) > 0) {
+          valorReceber = Number((pesoFinal * Number(carregamento.valor_frete_tomador_kg)).toFixed(2));
+        } else {
+          valorReceber = Number((valorCte + valorPorFora).toFixed(2));
+        }
+        valorReceberDesc = `Faturamento Tomador: R$ ${valorReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (CT-e: R$ ${valorCte.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + Por Fora: R$ ${valorPorFora.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
+      } else if (isAgenciamento) {
+        if (Number(carregamento.comissao_agenciamento_valor) > 0) {
+          if (carregamento.comissao_agenciamento_tipo === 'fixo') {
+            valorReceber = Number(carregamento.comissao_agenciamento_valor);
+          } else {
+            valorReceber = Number(((valorReal * Number(carregamento.comissao_agenciamento_valor)) / 100).toFixed(2));
+          }
+        } else {
+          valorReceber = Number(((valorReal * 5.0) / 100).toFixed(2));
+        }
+        valorReceberDesc = `Comissão/Lucro da Agência: R$ ${valorReceber.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      } else {
+        valorReceber = 0;
+        valorReceberDesc = 'Nenhum contas a receber (Gestão de Pagamentos)';
+      }
+
       setPreviewData({
+        modalidade: mod,
+        isGestao,
+        isSubcontratacao,
+        isAgenciamento,
         pesoAprox,
         pesoReal: pesoFinal,
         valorKg,
@@ -93,6 +134,8 @@ export default function ImportarCteCarregamentoModal({
         valorReal,
         valorCte,
         valorPorFora,
+        valorReceber,
+        valorReceberDesc,
         numeroCte
       });
     } catch (err) {
@@ -207,8 +250,28 @@ export default function ImportarCteCarregamentoModal({
                 </p>
               </div>
 
-              {/* Resumo dos Valores, Peso da Balança e Valor Por Fora Calculados */}
+              {/* Modalidade e Resumo dos Valores */}
               <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                    {resultado.calculos?.modalidade === 'gestao_pagamentos' && <ShieldCheck className="w-4 h-4 text-amber-400" />}
+                    {resultado.calculos?.modalidade === 'subcontratacao' && <Truck className="w-4 h-4 text-blue-400" />}
+                    {resultado.calculos?.modalidade === 'agenciamento_repasse' && <Handshake className="w-4 h-4 text-purple-400" />}
+                    Modalidade: <strong className="text-white font-extrabold">{resultado.calculos?.modalidade_label || 'Gestão de Pagamentos'}</strong>
+                  </span>
+                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                    resultado.calculos?.modalidade === 'gestao_pagamentos'
+                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      : (resultado.calculos?.modalidade === 'agenciamento_repasse'
+                          ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                          : 'bg-blue-500/10 text-blue-300 border-blue-500/30')
+                  }`}>
+                    {resultado.calculos?.modalidade === 'gestao_pagamentos' 
+                      ? 'Sem Contas a Receber' 
+                      : (resultado.calculos?.modalidade === 'agenciamento_repasse' ? 'Comissão da Agência' : 'Fatura Tomador (CT-e + Por Fora)')}
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between py-1 border-b border-slate-800">
                   <span className="text-slate-400">CT-e Emitido:</span>
                   <strong className="text-white font-bold">
@@ -278,6 +341,60 @@ export default function ImportarCteCarregamentoModal({
                     </strong>
                   </div>
                 )}
+              </div>
+
+              {/* TÍTULOS FINANCEIROS GERADOS NO SISTEMA */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                  Lançamento Financeiro Oficial Gerado:
+                </span>
+
+                <div className="space-y-2">
+                  {resultado.calculos?.titulos_gerados && resultado.calculos.titulos_gerados.length > 0 ? (
+                    resultado.calculos.titulos_gerados.map((tit) => (
+                      <div 
+                        key={tit.id}
+                        className={`p-2.5 rounded-lg border ${
+                          tit.tipo === 'pagar' 
+                            ? 'bg-amber-950/20 border-amber-500/30 text-slate-200' 
+                            : 'bg-emerald-950/20 border-emerald-500/30 text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                            tit.tipo === 'pagar' 
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          }`}>
+                            {tit.tipo === 'pagar' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                            {tit.tipo === 'pagar' ? 'CONTA A PAGAR' : 'CONTA A RECEBER'}
+                          </span>
+                          <strong className={`font-mono text-sm font-black ${
+                            tit.tipo === 'pagar' ? 'text-amber-300' : 'text-emerald-300'
+                          }`}>
+                            R$ {Number(tit.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </strong>
+                        </div>
+                        <div className="text-[11px] text-slate-300 font-medium">
+                          {tit.tipo === 'pagar' ? `Beneficiário: ${tit.beneficiario}` : `Pagador: ${tit.pagador}`}
+                        </div>
+                        <div className="text-[10px] text-slate-400 line-clamp-2 mt-0.5">
+                          {tit.descricao}
+                        </div>
+                      </div>
+                    ))
+                  ) : null}
+
+                  {resultado.calculos?.modalidade === 'gestao_pagamentos' && (
+                    <div className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center gap-2 text-slate-400 text-[11px]">
+                      <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>
+                        <strong>Contas a Receber:</strong> Não gerado. Na modalidade <em>Gestão de Pagamentos</em> a empresa atua como tomadora da mercadoria e do frete, gerando apenas títulos a pagar.
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">
@@ -451,6 +568,78 @@ export default function ImportarCteCarregamentoModal({
                       <strong className="text-amber-300 text-sm font-black font-mono">
                         R$ {previewData.valorPorFora?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </strong>
+                    </div>
+                  </div>
+
+                  {/* Resumo da Regra Financeira Aplicável Conforme a Modalidade */}
+                  <div className="pt-2 border-t border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                        {previewData.isGestao && <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />}
+                        {previewData.isSubcontratacao && <Truck className="w-3.5 h-3.5 text-blue-400" />}
+                        {previewData.isAgenciamento && <Handshake className="w-3.5 h-3.5 text-purple-400" />}
+                        Modalidade: <span className="text-white font-bold">{previewData.isGestao ? 'Gestão de Pagamentos' : (previewData.isAgenciamento ? 'Agenciamento & Repasse' : 'Subcontratação')}</span>
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        previewData.isGestao 
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' 
+                          : (previewData.isAgenciamento 
+                              ? 'bg-purple-500/10 text-purple-300 border-purple-500/30' 
+                              : 'bg-blue-500/10 text-blue-300 border-blue-500/30')
+                      }`}>
+                        {previewData.isGestao ? 'Sem Contas a Receber' : (previewData.isAgenciamento ? 'Recebe Comissão' : 'Fatura Tomador (CT-e + Por Fora)')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {/* Título A Pagar (Motorista) - Presente em todas as modalidades */}
+                      <div className="p-2.5 rounded-lg bg-amber-950/20 border border-amber-500/30">
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="text-amber-400 font-bold flex items-center gap-1">
+                            <ArrowDownRight className="w-3.5 h-3.5 text-amber-400" />
+                            Contas a Pagar (Motorista):
+                          </span>
+                          <strong className="text-amber-200 font-black font-mono">
+                            R$ {previewData.valorReal?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </strong>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          CT-e Fiscal: R$ {previewData.valorCte?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} 
+                          {previewData.valorPorFora > 0 ? ` + Por Fora: R$ ${previewData.valorPorFora?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
+                        </p>
+                      </div>
+
+                      {/* Título A Receber - Rigorosamente dependente da Modalidade */}
+                      <div className={`p-2.5 rounded-lg border ${
+                        previewData.isGestao
+                          ? 'bg-slate-900/60 border-slate-800 text-slate-400'
+                          : (previewData.isAgenciamento 
+                              ? 'bg-purple-950/20 border-purple-500/30 text-purple-200'
+                              : 'bg-blue-950/20 border-blue-500/30 text-blue-200')
+                      }`}>
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className={`font-bold flex items-center gap-1 ${
+                            previewData.isGestao ? 'text-slate-400' : (previewData.isAgenciamento ? 'text-purple-400' : 'text-blue-400')
+                          }`}>
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                            {previewData.isGestao 
+                              ? 'Contas a Receber:' 
+                              : (previewData.isAgenciamento ? 'Comissão a Receber:' : 'Faturamento a Receber:')}
+                          </span>
+                          <strong className={`font-black font-mono ${
+                            previewData.isGestao ? 'text-slate-500' : (previewData.isAgenciamento ? 'text-purple-300' : 'text-blue-300')
+                          }`}>
+                            {previewData.isGestao ? 'R$ 0,00' : `R$ ${previewData.valorReceber?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                          </strong>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          {previewData.isGestao 
+                            ? '🚫 Nenhum título a receber será gerado (Empresa é a compradora/tomadora).'
+                            : (previewData.isAgenciamento 
+                                ? 'Honorários / Lucro da Agência de Cargas.'
+                                : `Faturamento Tomador: CT-e fiscal (R$ ${previewData.valorCte?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) + Por Fora (R$ ${previewData.valorPorFora?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).`)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

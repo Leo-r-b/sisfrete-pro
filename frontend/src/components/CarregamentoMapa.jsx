@@ -173,6 +173,16 @@ export default function CarregamentoMapa({
     }
   }, [mapaCidades]);
 
+  // Sincronizar selectedCidadeData quando mapaCidades for atualizado (ex: após edição de carregamento)
+  useEffect(() => {
+    if (selectedCidadeData && mapaCidades && mapaCidades.length > 0) {
+      const cidadeAtualizada = mapaCidades.find(p => p.chave === selectedCidadeData.chave);
+      if (cidadeAtualizada) {
+        setSelectedCidadeData(cidadeAtualizada);
+      }
+    }
+  }, [mapaCidades]);
+
   const handleResetZoom = () => {
     if (!mapInstanceRef.current || !mapaCidades || mapaCidades.length === 0) return;
     const bounds = L.latLngBounds([]);
@@ -329,6 +339,21 @@ export default function CarregamentoMapa({
                         Cavalo: <strong className="text-slate-200">{cam.placa_cavalo}</strong>
                         {cam.placa_carreta && <> • Carreta: <strong className="text-slate-200">{cam.placa_carreta}</strong></>}
                       </p>
+                      <div className="flex items-center gap-1 mt-1">
+                        {cam.modalidade === 'gestao_pagamentos' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[9px] font-bold border border-amber-500/20">
+                            🏢 Gestão de Pagamentos
+                          </span>
+                        ) : cam.modalidade === 'agenciamento_repasse' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 text-[9px] font-bold border border-purple-500/20">
+                            🤝 Agenciamento
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 text-[9px] font-bold border border-blue-500/20">
+                            🚚 Subcontratação
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

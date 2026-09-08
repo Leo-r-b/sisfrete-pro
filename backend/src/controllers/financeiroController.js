@@ -333,9 +333,17 @@ const listTitulos = (req, res) => {
       }
     }
     
+    const empresaObj = db.prepare('SELECT modo_operacao FROM empresas WHERE id = ? OR id = ?').get(empIdNum, empIdStr);
+    const isGestaoEmpresa = empresaObj?.modo_operacao === 'gestao_pagamentos';
+
     // Mapear frete_ids que já têm títulos criados manualmente na tabela financeiro_titulos
     const fretesComTitulosAvulsos = new Set();
     for (const t of titulosAvulsos) {
+      // Regra Essencial: Gestão de Pagamentos não gera nem possui Contas a Receber de Fretes/CT-e
+      if (isGestaoEmpresa && t.tipo === 'receber' && (t.frete_id || t.origem === 'frete_cte' || t.categoria === 'faturamento_frete')) {
+        continue;
+      }
+
       if (t.frete_id) {
         fretesComTitulosAvulsos.add(`${t.tipo}_${t.frete_id}`);
       }
@@ -368,8 +376,6 @@ const listTitulos = (req, res) => {
 
     // 2. Se origem !== 'operacional_fixo', adicionar os fretes da tabela fretes
     if (origem !== 'operacional_fixo') {
-      const empresaObj = db.prepare('SELECT modo_operacao FROM empresas WHERE id = ? OR id = ?').get(empIdNum, empIdStr);
-      const isGestaoEmpresa = empresaObj?.modo_operacao === 'gestao_pagamentos';
 
       const fretes = db.prepare(`
         SELECT 

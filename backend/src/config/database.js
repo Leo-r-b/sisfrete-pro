@@ -454,12 +454,18 @@ function initDatabase() {
       destino_uf TEXT NOT NULL,
       
       -- Condições Comerciais
+      modalidade TEXT DEFAULT 'gestao_pagamentos', -- 'gestao_pagamentos', 'subcontratacao', 'agenciamento_repasse'
       tipo_carga TEXT,
       tipo_negociacao TEXT DEFAULT 'por_kg', -- 'por_kg', 'por_ton', 'total_fechado'
       valor_combinado_kg REAL DEFAULT 0,
       peso_estimado_kg REAL DEFAULT 0,
       valor_frete_estimado REAL DEFAULT 0,
       valor_adiantamento_combinado REAL DEFAULT 0,
+      valor_frete_tomador_kg REAL DEFAULT 0,
+      valor_frete_tomador_total REAL DEFAULT 0,
+      comissao_agenciamento_tipo TEXT DEFAULT 'percentual', -- 'percentual', 'fixo'
+      comissao_agenciamento_valor REAL DEFAULT 0,
+      valor_comissao_real REAL DEFAULT 0,
       
       -- Vínculo com CT-e / Frete
       frete_id INTEGER,
@@ -499,11 +505,29 @@ function initDatabase() {
     }
   }
 
-  // Garantir coluna valor_por_fora em carregamentos
+  // Garantir coluna valor_por_fora e colunas de modalidades em carregamentos
   try {
     const carregCols = db.prepare(`PRAGMA table_info(carregamentos)`).all().map(c => c.name);
     if (!carregCols.includes('valor_por_fora')) {
       db.exec(`ALTER TABLE carregamentos ADD COLUMN valor_por_fora REAL DEFAULT 0`);
+    }
+    if (!carregCols.includes('modalidade')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN modalidade TEXT DEFAULT 'gestao_pagamentos'`);
+    }
+    if (!carregCols.includes('valor_frete_tomador_kg')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN valor_frete_tomador_kg REAL DEFAULT 0`);
+    }
+    if (!carregCols.includes('valor_frete_tomador_total')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN valor_frete_tomador_total REAL DEFAULT 0`);
+    }
+    if (!carregCols.includes('comissao_agenciamento_tipo')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN comissao_agenciamento_tipo TEXT DEFAULT 'percentual'`);
+    }
+    if (!carregCols.includes('comissao_agenciamento_valor')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN comissao_agenciamento_valor REAL DEFAULT 0`);
+    }
+    if (!carregCols.includes('valor_comissao_real')) {
+      db.exec(`ALTER TABLE carregamentos ADD COLUMN valor_comissao_real REAL DEFAULT 0`);
     }
   } catch (e) {}
 

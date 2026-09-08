@@ -13,9 +13,13 @@ import {
   AlertCircle, 
   Sparkles, 
   UserCheck, 
-  FileText 
+  FileText,
+  Briefcase,
+  Handshake,
+  ShieldCheck
 } from 'lucide-react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function NovoCarregamentoModal({ 
   isOpen, 
@@ -23,9 +27,24 @@ export default function NovoCarregamentoModal({
   onSuccess, 
   carregamentoParaEditar = null 
 }) {
+  const { activeEmpresa } = useAuth();
   const [loading, setLoading] = useState(false);
   const [motoristasCadastrados, setMotoristasCadastrados] = useState([]);
   const [clientesCadastrados, setClientesCadastrados] = useState([]);
+
+  // Modalidade de Operação (Gestão de Pagamentos, Subcontratação, Agenciamento)
+  const [modalidade, setModalidade] = useState(activeEmpresa?.modo_operacao || 'gestao_pagamentos');
+  
+  // Condições Específicas de Subcontratação
+  const [tipoCobrancaTomador, setTipoCobrancaTomador] = useState('mesmo_motorista');
+  const [valorFreteTomadorKg, setValorFreteTomadorKg] = useState('');
+  const [valorFreteTomadorTotal, setValorFreteTomadorTotal] = useState('');
+
+  // Condições Específicas de Agenciamento
+  const [comissaoAgenciamentoTipo, setComissaoAgenciamentoTipo] = useState('percentual');
+  const [comissaoAgenciamentoValor, setComissaoAgenciamentoValor] = useState(
+    activeEmpresa?.percentual_comissao_padrao !== undefined ? String(activeEmpresa.percentual_comissao_padrao) : '5.0'
+  );
 
   // Estados do formulário
   const [motoristaId, setMotoristaId] = useState('');
@@ -96,6 +115,7 @@ export default function NovoCarregamentoModal({
 
     // Se for edição de carregamento existente
     if (carregamentoParaEditar) {
+      setModalidade(carregamentoParaEditar.modalidade || activeEmpresa?.modo_operacao || 'gestao_pagamentos');
       setMotoristaId(carregamentoParaEditar.motorista_id || '');
       setMotoristaNome(carregamentoParaEditar.motorista_nome || '');
       setMotoristaCpf(carregamentoParaEditar.motorista_cpf || '');
@@ -110,7 +130,12 @@ export default function NovoCarregamentoModal({
       setOrigemCidade(carregamentoParaEditar.origem_cidade || 'Mafra');
       setOrigemUf(carregamentoParaEditar.origem_uf || 'SC');
 
-      setIsTriangular(Boolean(carregamentoParaEditar.is_triangular));
+      setIsTriangular(Boolean(
+        carregamentoParaEditar.is_triangular === 1 ||
+        carregamentoParaEditar.is_triangular === true ||
+        carregamentoParaEditar.is_triangular === '1' ||
+        carregamentoParaEditar.is_triangular === 'true'
+      ));
       setIntermediadorId(carregamentoParaEditar.intermediador_id || '');
       setIntermediadorNome(carregamentoParaEditar.intermediador_nome || '');
       setIntermediadorCnpj(carregamentoParaEditar.intermediador_cnpj || '');
@@ -126,12 +151,33 @@ export default function NovoCarregamentoModal({
       setPesoEstimadoKg(carregamentoParaEditar.peso_estimado_kg || '38000');
       setValorAdiantamento(carregamentoParaEditar.valor_adiantamento_combinado || '');
 
+      setValorFreteTomadorKg(carregamentoParaEditar.valor_frete_tomador_kg || '');
+      setValorFreteTomadorTotal(carregamentoParaEditar.valor_frete_tomador_total || '');
+      setTipoCobrancaTomador(
+        Number(carregamentoParaEditar.valor_frete_tomador_total) > 0 ? 'total' :
+        (Number(carregamentoParaEditar.valor_frete_tomador_kg) > 0 ? 'por_kg' : 'mesmo_motorista')
+      );
+      setComissaoAgenciamentoTipo(carregamentoParaEditar.comissao_agenciamento_tipo || 'percentual');
+      setComissaoAgenciamentoValor(
+        carregamentoParaEditar.comissao_agenciamento_valor !== undefined && carregamentoParaEditar.comissao_agenciamento_valor !== null
+          ? String(carregamentoParaEditar.comissao_agenciamento_valor)
+          : (activeEmpresa?.percentual_comissao_padrao !== undefined ? String(activeEmpresa.percentual_comissao_padrao) : '5.0')
+      );
+
       if (carregamentoParaEditar.data_inclusao) {
         setDataInclusao(carregamentoParaEditar.data_inclusao.slice(0, 16));
       }
       setObservacoes(carregamentoParaEditar.observacoes || '');
     } else {
       // Limpar campos para novo registro
+      setModalidade(activeEmpresa?.modo_operacao || 'gestao_pagamentos');
+      setTipoCobrancaTomador('mesmo_motorista');
+      setValorFreteTomadorKg('');
+      setValorFreteTomadorTotal('');
+      setComissaoAgenciamentoTipo('percentual');
+      setComissaoAgenciamentoValor(
+        activeEmpresa?.percentual_comissao_padrao !== undefined ? String(activeEmpresa.percentual_comissao_padrao) : '5.0'
+      );
       setMotoristaId('');
       setMotoristaNome('');
       setMotoristaCpf('');
@@ -162,7 +208,7 @@ export default function NovoCarregamentoModal({
       setXmlFile1(null);
       setXmlFile2(null);
     }
-  }, [isOpen, carregamentoParaEditar]);
+  }, [isOpen, carregamentoParaEditar, activeEmpresa]);
 
   // Ao selecionar um motorista existente no banco
   const handleSelectMotorista = (e) => {
@@ -223,10 +269,27 @@ export default function NovoCarregamentoModal({
     }
   };
 
-  // Cálculo de frete estimado
+  // Cálculo de frete estimado para o Motorista
   const vKg = parseFloat(valorCombinadoKg) || 0;
   const pKg = parseFloat(pesoEstimadoKg) || 0;
-  const freteEstimadoTotal = vKg * pKg;
+  const freteEstimadoMotorista = Number((vKg * pKg).toFixed(2));
+
+  // Cálculo de frete estimado para o Tomador (Subcontratação)
+  let freteEstimadoTomador = freteEstimadoMotorista;
+  if (tipoCobrancaTomador === 'por_kg' && parseFloat(valorFreteTomadorKg) > 0) {
+    freteEstimadoTomador = Number((pKg * parseFloat(valorFreteTomadorKg)).toFixed(2));
+  } else if (tipoCobrancaTomador === 'total' && parseFloat(valorFreteTomadorTotal) > 0) {
+    freteEstimadoTomador = parseFloat(valorFreteTomadorTotal);
+  }
+  const margemEstimadaSubcontratacao = Number((freteEstimadoTomador - freteEstimadoMotorista).toFixed(2));
+
+  // Cálculo de comissão estimada (Agenciamento)
+  let comissaoEstimadaAgenciamento = 0;
+  if (comissaoAgenciamentoTipo === 'percentual') {
+    comissaoEstimadaAgenciamento = Number(((freteEstimadoMotorista * (parseFloat(comissaoAgenciamentoValor) || 0)) / 100).toFixed(2));
+  } else {
+    comissaoEstimadaAgenciamento = parseFloat(comissaoAgenciamentoValor) || 0;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -248,6 +311,7 @@ export default function NovoCarregamentoModal({
       setLoading(true);
 
       const payload = {
+        modalidade: modalidade,
         motorista_id: motoristaId ? Number(motoristaId) : null,
         motorista_nome: motoristaNome.trim(),
         motorista_cpf: motoristaCpf.trim() || null,
@@ -261,10 +325,10 @@ export default function NovoCarregamentoModal({
         origem_cidade: origemCidade.trim(),
         origem_uf: origemUf.trim().toUpperCase(),
         is_triangular: isTriangular ? 1 : 0,
-        intermediador_id: intermediadorId ? Number(intermediadorId) : null,
-        intermediador_nome: isTriangular ? intermediadorNome.trim() : null,
-        intermediador_cnpj: isTriangular ? intermediadorCnpj.trim() : null,
-        valor_repasse_combinado: isTriangular ? (parseFloat(valorRepasseCombinado) || 0) : 0,
+        intermediador_id: isTriangular && intermediadorId ? Number(intermediadorId) : null,
+        intermediador_nome: isTriangular && intermediadorNome ? intermediadorNome.trim() : null,
+        intermediador_cnpj: isTriangular && intermediadorCnpj ? intermediadorCnpj.trim() : null,
+        valor_repasse_combinado: isTriangular && valorRepasseCombinado ? (parseFloat(valorRepasseCombinado) || 0) : 0,
         destino_cliente_id: destinoClienteId ? Number(destinoClienteId) : null,
         destino_empresa_nome: destinoEmpresaNome.trim(),
         destino_cidade: destinoCidade.trim(),
@@ -273,8 +337,12 @@ export default function NovoCarregamentoModal({
         tipo_negociacao: 'por_kg',
         valor_combinado_kg: vKg,
         peso_estimado_kg: pKg,
-        valor_frete_estimado: freteEstimadoTotal,
+        valor_frete_estimado: freteEstimadoMotorista,
         valor_adiantamento_combinado: parseFloat(valorAdiantamento) || 0,
+        valor_frete_tomador_kg: modalidade === 'subcontratacao' && tipoCobrancaTomador === 'por_kg' ? (parseFloat(valorFreteTomadorKg) || 0) : 0,
+        valor_frete_tomador_total: modalidade === 'subcontratacao' && tipoCobrancaTomador === 'total' ? (parseFloat(valorFreteTomadorTotal) || 0) : 0,
+        comissao_agenciamento_tipo: comissaoAgenciamentoTipo,
+        comissao_agenciamento_valor: modalidade === 'agenciamento_repasse' ? (parseFloat(comissaoAgenciamentoValor) || 0) : 0,
         data_inclusao: dataInclusao ? dataInclusao.replace('T', ' ') : undefined,
         observacoes: observacoes.trim() || null
       };
@@ -344,6 +412,87 @@ export default function NovoCarregamentoModal({
         {/* Formulário Principal */}
         <form onSubmit={handleSubmit} className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
           
+          {/* BANNER SELETOR DE MODALIDADE */}
+          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                <Briefcase className="w-4 h-4 text-blue-400" />
+                Modalidade da Operação & Regra Financeira
+              </label>
+              <span className="text-[11px] text-slate-400">
+                Define o comportamento contábil ao importar o CT-e
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* Opção 1: Gestão de Pagamentos */}
+              <button
+                type="button"
+                onClick={() => setModalidade('gestao_pagamentos')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  modalidade === 'gestao_pagamentos'
+                    ? 'bg-amber-500/10 border-amber-500/60 shadow-lg shadow-amber-500/10'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'gestao_pagamentos' ? 'text-amber-400' : 'text-slate-300'}`}>
+                    <ShieldCheck className="w-4 h-4" />
+                    Gestão de Pagamentos
+                  </span>
+                  {modalidade === 'gestao_pagamentos' && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  Ex: Farimax / Embarcador. Paga o freteiro (CT-e + Por Fora). <strong className="text-amber-300/90">Não gera contas a receber.</strong>
+                </p>
+              </button>
+
+              {/* Opção 2: Subcontratação Tradicional */}
+              <button
+                type="button"
+                onClick={() => setModalidade('subcontratacao')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  modalidade === 'subcontratacao'
+                    ? 'bg-blue-500/10 border-blue-500/60 shadow-lg shadow-blue-500/10'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'subcontratacao' ? 'text-blue-400' : 'text-slate-300'}`}>
+                    <Truck className="w-4 h-4" />
+                    Subcontratação
+                  </span>
+                  {modalidade === 'subcontratacao' && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  Transportadora oficial. <strong className="text-blue-300/90">Fatura o Tomador (CT-e + Por Fora)</strong> e paga o terceiro.
+                </p>
+              </button>
+
+              {/* Opção 3: Agenciamento & Repasse */}
+              <button
+                type="button"
+                onClick={() => setModalidade('agenciamento_repasse')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  modalidade === 'agenciamento_repasse'
+                    ? 'bg-purple-500/10 border-purple-500/60 shadow-lg shadow-purple-500/10'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-bold flex items-center gap-1.5 ${modalidade === 'agenciamento_repasse' ? 'text-purple-400' : 'text-slate-300'}`}>
+                    <Handshake className="w-4 h-4" />
+                    Agenciamento & Repasse
+                  </span>
+                  {modalidade === 'agenciamento_repasse' && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  Intermediação de fretes. Paga o freteiro e <strong className="text-purple-300/90">recebe a comissão/lucro</strong> do frete.
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* SEÇÃO 1: MOTORISTA & VEÍCULO */}
           <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3.5">
             <div className="flex items-center justify-between">
@@ -631,81 +780,312 @@ export default function NovoCarregamentoModal({
             </div>
           </div>
 
-          {/* SEÇÃO 5: NEGOCIAÇÃO COMERCIAL (VALOR POR KG & ESTIMATIVA) */}
-          <div className="p-4 rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-emerald-950/30 border border-emerald-500/30 space-y-3.5">
-            <h3 className="text-xs font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-              4. Negociação Comercial & Valores de Frete
-            </h3>
+          {/* SEÇÃO 4: NEGOCIAÇÃO COMERCIAL (VALOR COMBINADO & REGRAS DA MODALIDADE) */}
+          <div className={`p-4 rounded-xl border space-y-4 ${
+            modalidade === 'subcontratacao'
+              ? 'bg-gradient-to-tr from-slate-950 via-slate-900 to-blue-950/30 border-blue-500/30'
+              : modalidade === 'agenciamento_repasse'
+                ? 'bg-gradient-to-tr from-slate-950 via-slate-900 to-purple-950/30 border-purple-500/30'
+                : 'bg-gradient-to-tr from-slate-950 via-slate-900 to-emerald-950/30 border-emerald-500/30'
+          }`}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-white">
+                <DollarSign className={`w-4 h-4 ${
+                  modalidade === 'subcontratacao' ? 'text-blue-400' : (modalidade === 'agenciamento_repasse' ? 'text-purple-400' : 'text-emerald-400')
+                }`} />
+                4. Negociação Comercial (Motorista & Modalidade)
+              </h3>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                modalidade === 'subcontratacao'
+                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                  : modalidade === 'agenciamento_repasse'
+                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+              }`}>
+                {modalidade === 'subcontratacao' ? 'Subcontratação Tradicional' : (modalidade === 'agenciamento_repasse' ? 'Agenciamento & Repasse' : 'Gestão de Pagamentos')}
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Tipo de Carga
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Soja em Grãos"
-                  value={tipoCarga}
-                  onChange={(e) => setTipoCarga(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+            {/* Parâmetros do Frete do Motorista (Comum a todas as modalidades) */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide block mb-2">
+                A) Frete Acordado com o Motorista / Freteiro
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Tipo de Carga
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Soja em Grãos"
+                    value={tipoCarga}
+                    onChange={(e) => setTipoCarga(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-emerald-400 mb-1">
-                  Valor Combinado por KG (R$/kg) *
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  required
-                  placeholder="Ex: 0.115"
-                  value={valorCombinadoKg}
-                  onChange={(e) => setValorCombinadoKg(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-emerald-500/50 text-emerald-400 font-bold focus:outline-none focus:border-emerald-400"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                    Valor por KG do Motorista (R$/kg) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    required
+                    placeholder="Ex: 0.150"
+                    value={valorCombinadoKg}
+                    onChange={(e) => setValorCombinadoKg(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-amber-500/50 text-amber-300 font-bold focus:outline-none focus:border-amber-400"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Peso Estimado (kg)
-                </label>
-                <input
-                  type="number"
-                  placeholder="38000"
-                  value={pesoEstimadoKg}
-                  onChange={(e) => setPesoEstimadoKg(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white font-semibold focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Peso Estimado (kg) *
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="35000"
+                    value={pesoEstimadoKg}
+                    onChange={(e) => setPesoEstimadoKg(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white font-semibold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                  Adiantamento Combinado (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={valorAdiantamento}
-                  onChange={(e) => setValorAdiantamento(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-semibold focus:outline-none focus:border-emerald-500"
-                />
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Adiantamento (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={valorAdiantamento}
+                    onChange={(e) => setValorAdiantamento(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-semibold focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Painel com Cálculo de Frete Estimado em Destaque */}
-            <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-slate-400">
-                Fórmula de Cálculo: <strong>{pKg.toLocaleString('pt-BR')} kg × R$ {vKg.toFixed(4)}/kg</strong>
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400 font-medium">Frete Estimado Total:</span>
-                <span className="text-emerald-400 font-black text-sm">
-                  R$ {freteEstimadoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {/* CONDIÇÃO ESPECÍFICA: SUBCONTRATAÇÃO TRADICIONAL */}
+            {modalidade === 'subcontratacao' && (
+              <div className="p-3.5 rounded-xl bg-blue-950/30 border border-blue-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-300 uppercase tracking-wide flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-blue-400" />
+                    B) Condição de Recebimento com o Cliente Tomador (Transportadora)
+                  </span>
+                  <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                    Fatura o Tomador: CT-e + Por Fora
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTipoCobrancaTomador('mesmo_motorista')}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition ${
+                      tipoCobrancaTomador === 'mesmo_motorista'
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block mb-0.5">Repasse Integral (Padrão)</span>
+                    <span className="text-[10px] leading-tight block text-slate-400">
+                      Tomador paga o valor total do motorista (CT-e + Por Fora).
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoCobrancaTomador('por_kg')}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition ${
+                      tipoCobrancaTomador === 'por_kg'
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block mb-0.5">Valor/KG Diferenciado</span>
+                    <span className="text-[10px] leading-tight block text-slate-400">
+                      Cobra do tomador valor/kg superior ao freteiro (Margem).
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoCobrancaTomador('total')}
+                    className={`p-2.5 rounded-lg border text-left cursor-pointer transition ${
+                      tipoCobrancaTomador === 'total'
+                        ? 'bg-blue-600/20 border-blue-500 text-blue-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold block mb-0.5">Valor Fixo Fechado</span>
+                    <span className="text-[10px] leading-tight block text-slate-400">
+                      Preço total fixado com o cliente para a viagem.
+                    </span>
+                  </button>
+                </div>
+
+                {tipoCobrancaTomador === 'por_kg' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-blue-300 mb-1">
+                      Valor por KG Cobrado do Tomador (R$/kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      placeholder="Ex: 0.165"
+                      value={valorFreteTomadorKg}
+                      onChange={(e) => setValorFreteTomadorKg(e.target.value)}
+                      className="w-full sm:w-1/2 px-3 py-1.5 text-sm rounded-lg bg-slate-900 border border-blue-500/50 text-blue-300 font-bold focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                )}
+
+                {tipoCobrancaTomador === 'total' && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-blue-300 mb-1">
+                      Valor Total Cobrado do Tomador (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex: 5800.00"
+                      value={valorFreteTomadorTotal}
+                      onChange={(e) => setValorFreteTomadorTotal(e.target.value)}
+                      className="w-full sm:w-1/2 px-3 py-1.5 text-sm rounded-lg bg-slate-900 border border-blue-500/50 text-blue-300 font-bold focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CONDIÇÃO ESPECÍFICA: AGENCIAMENTO & REPASSE */}
+            {modalidade === 'agenciamento_repasse' && (
+              <div className="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wide flex items-center gap-1.5">
+                    <Handshake className="w-3.5 h-3.5 text-purple-400" />
+                    B) Comissão & Honorários de Agenciamento
+                  </span>
+                  <span className="text-[10px] text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                    A Agência fatura a comissão/lucro
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-purple-300 mb-1">
+                      Formato da Comissão
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setComissaoAgenciamentoTipo('percentual')}
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition ${
+                          comissaoAgenciamentoTipo === 'percentual'
+                            ? 'bg-purple-600 text-white border-purple-500'
+                            : 'bg-slate-900 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        % Percentual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComissaoAgenciamentoTipo('fixo')}
+                        className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition ${
+                          comissaoAgenciamentoTipo === 'fixo'
+                            ? 'bg-purple-600 text-white border-purple-500'
+                            : 'bg-slate-900 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        R$ Valor Fixo
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-purple-300 mb-1">
+                      {comissaoAgenciamentoTipo === 'percentual' ? 'Percentual de Comissão (%)' : 'Valor da Comissão (R$)'}
+                    </label>
+                    <input
+                      type="number"
+                      step={comissaoAgenciamentoTipo === 'percentual' ? '0.1' : '0.01'}
+                      value={comissaoAgenciamentoValor}
+                      onChange={(e) => setComissaoAgenciamentoValor(e.target.value)}
+                      placeholder={comissaoAgenciamentoTipo === 'percentual' ? '5.0' : '250.00'}
+                      className="w-full px-3 py-1.5 text-sm rounded-lg bg-slate-900 border border-purple-500/50 text-purple-200 font-bold focus:outline-none focus:border-purple-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* RESUMO PROJETADO CONFORME A MODALIDADE */}
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-800">
+                <span className="text-slate-400">
+                  Estimativa Motorista ({pKg.toLocaleString('pt-BR')} kg × R$ {vKg.toFixed(4)}/kg):
+                </span>
+                <span className="text-amber-400 font-black text-sm font-mono">
+                  R$ {freteEstimadoMotorista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </span>
               </div>
+
+              {modalidade === 'subcontratacao' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
+                  <div className="p-2 rounded-lg bg-blue-950/30 border border-blue-500/20">
+                    <span className="text-slate-400 block text-[10px]">📥 A Receber do Tomador:</span>
+                    <strong className="text-blue-300 font-black text-xs font-mono">
+                      R$ {freteEstimadoTomador.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-500/20">
+                    <span className="text-slate-400 block text-[10px]">📤 A Pagar ao Motorista:</span>
+                    <strong className="text-amber-300 font-black text-xs font-mono">
+                      R$ {freteEstimadoMotorista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-500/20">
+                    <span className="text-slate-400 block text-[10px]">💰 Margem Estimada:</span>
+                    <strong className="text-emerald-300 font-black text-xs font-mono">
+                      R$ {margemEstimadaSubcontratacao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {modalidade === 'agenciamento_repasse' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                  <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-500/20">
+                    <span className="text-slate-400 block text-[10px]">📤 A Pagar ao Motorista:</span>
+                    <strong className="text-amber-300 font-black text-xs font-mono">
+                      R$ {freteEstimadoMotorista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-purple-950/30 border border-purple-500/20">
+                    <span className="text-slate-400 block text-[10px]">📥 A Receber (Comissão Agência):</span>
+                    <strong className="text-purple-300 font-black text-xs font-mono">
+                      R$ {comissaoEstimadaAgenciamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {modalidade === 'gestao_pagamentos' && (
+                <div className="flex items-center justify-between text-xs pt-1 text-slate-400">
+                  <span className="text-[11px] text-amber-300/80 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                    Gestão de Pagamentos: Não gera contas a receber. Apenas contas a pagar para o motorista/repasse.
+                  </span>
+                  <span className="text-xs text-slate-300 font-medium">
+                    A pagar: <strong className="text-amber-400 font-bold">R$ {freteEstimadoMotorista.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

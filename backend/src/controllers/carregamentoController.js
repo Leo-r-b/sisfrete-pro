@@ -152,31 +152,11 @@ const listCarregamentos = (req, res) => {
       const cidadeGrupo = mapaCidadesMap.get(key);
       cidadeGrupo.total_caminhoes += 1;
       cidadeGrupo.caminhoes.push({
-        id: c.id,
-        motorista_nome: c.motorista_nome,
-        motorista_telefone: c.motorista_telefone,
-        placa_cavalo: c.placa_cavalo,
-        placa_carreta: c.placa_carreta,
-        tipo_veiculo: c.tipo_veiculo,
-        freteiro_nome: c.freteiro_nome,
-        fornecedor_nome: c.fornecedor_nome,
-        origem_cidade: c.origem_cidade,
-        origem_uf: c.origem_uf,
-        is_triangular: Boolean(c.is_triangular),
-        intermediador_nome: c.intermediador_nome,
-        destino_empresa_nome: c.destino_empresa_nome,
-        destino_cidade: c.destino_cidade,
-        destino_uf: c.destino_uf,
-        tipo_carga: c.tipo_carga,
-        valor_combinado_kg: c.valor_combinado_kg,
-        peso_estimado_kg: c.peso_estimado_kg,
-        valor_frete_estimado: c.valor_frete_estimado,
-        peso_real_kg: c.peso_real_kg,
-        valor_frete_motorista_real: c.valor_frete_motorista_real,
-        valor_cte_total: c.valor_cte_total,
-        valor_por_fora: c.valor_por_fora,
-        status: c.status,
-        data_inclusao: c.data_inclusao,
+        ...c,
+        is_triangular: Boolean(c.is_triangular === 1 || c.is_triangular === true || c.is_triangular === '1'),
+        modalidade: c.modalidade || 'gestao_pagamentos',
+        intermediador_nome: c.intermediador_nome || null,
+        valor_repasse_combinado: Number(c.valor_repasse_combinado || 0),
         data_inclusao_formatada: c.data_inclusao_formatada,
         tempo_decorrido: c.tempo_decorrido,
         hora_inclusao: c.hora_inclusao
@@ -222,17 +202,32 @@ const getCarregamentoById = (req, res) => {
     const empIdNum = Number(empresaId);
     const empIdStr = String(empresaId);
 
-    const carregamento = db.prepare(`
-      SELECT c.*,
-        f.id as frete_id,
-        f.numero_cte as frete_numero_cte,
-        f.chave_cte as frete_chave_cte,
-        f.valor_frete_venda,
-        f.valor_frete_compra
-      FROM carregamentos c
-      LEFT JOIN fretes f ON c.frete_id = f.id
-      WHERE c.id = ? AND (c.empresa_id = ? OR c.empresa_id = ?)
-    `).get(id, empIdNum, empIdStr);
+    let carregamento;
+    if (req.user?.role === 'super_admin') {
+      carregamento = db.prepare(`
+        SELECT c.*,
+          f.id as frete_id,
+          f.numero_cte as frete_numero_cte,
+          f.chave_cte as frete_chave_cte,
+          f.valor_frete_venda,
+          f.valor_frete_compra
+        FROM carregamentos c
+        LEFT JOIN fretes f ON c.frete_id = f.id
+        WHERE c.id = ?
+      `).get(id);
+    } else {
+      carregamento = db.prepare(`
+        SELECT c.*,
+          f.id as frete_id,
+          f.numero_cte as frete_numero_cte,
+          f.chave_cte as frete_chave_cte,
+          f.valor_frete_venda,
+          f.valor_frete_compra
+        FROM carregamentos c
+        LEFT JOIN fretes f ON c.frete_id = f.id
+        WHERE c.id = ? AND (c.empresa_id = ? OR c.empresa_id = ?)
+      `).get(id, empIdNum, empIdStr);
+    }
 
     if (!carregamento) {
       return res.status(404).json({ error: 'Carregamento não encontrado.' });
@@ -292,9 +287,17 @@ const createCarregamento = (req, res) => {
 
     const dataInclusao = data.data_inclusao || new Date().toISOString().replace('T', ' ').slice(0, 19);
 
+    // Modalidade da Operação (Gestão de Pagamentos, Subcontratação, Agenciamento & Repasse)
+    const empresaObj = db.prepare('SELECT modo_operacao, percentual_comissao_padrao FROM empresas WHERE id = ?').get(empresaId);
+    const modalidade = data.modalidade || empresaObj?.modo_operacao || 'gestao_pagamentos';
+    const valorTomadorKg = Number(data.valor_frete_tomador_kg) || 0;
+    const valorTomadorTotal = Number(data.valor_frete_tomador_total) || 0;
+    const comissaoTipo = data.comissao_agenciamento_tipo || 'percentual';
+    const comissaoValor = Number(data.comissao_agenciamento_valor) || 0;
+
     const stmt = db.prepare(`
       INSERT INTO carregamentos (
-        empresa_id, status,
+        empresa_id, status, modalidade,
         motorista_id, motorista_nome, motorista_cpf, motorista_telefone,
         placa_cavalo, placa_carreta, tipo_veiculo, freteiro_nome, freteiro_documento,
         fornecedor_id, fornecedor_nome, origem_cidade, origem_uf, origem_endereco,
@@ -304,9 +307,11 @@ const createCarregamento = (req, res) => {
         destino_cliente_id, destino_empresa_nome, destino_cidade, destino_uf,
         tipo_carga, tipo_negociacao, valor_combinado_kg, peso_estimado_kg,
         valor_frete_estimado, valor_adiantamento_combinado,
+        valor_frete_tomador_kg, valor_frete_tomador_total,
+        comissao_agenciamento_tipo, comissao_agenciamento_valor,
         data_inclusao, previsao_saida, observacoes
       ) VALUES (
-        ?, ?,
+        ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -316,6 +321,8 @@ const createCarregamento = (req, res) => {
         ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
+        ?, ?,
+        ?, ?,
         ?, ?, ?
       )
     `);
@@ -323,6 +330,7 @@ const createCarregamento = (req, res) => {
     const result = stmt.run(
       empresaId,
       data.status || 'carregando',
+      modalidade,
       data.motorista_id || null,
       data.motorista_nome.trim(),
       data.motorista_cpf || null,
@@ -356,6 +364,10 @@ const createCarregamento = (req, res) => {
       pesoEst,
       freteEst,
       Number(data.valor_adiantamento_combinado) || 0,
+      valorTomadorKg,
+      valorTomadorTotal,
+      comissaoTipo,
+      comissaoValor,
       dataInclusao,
       data.previsao_saida || null,
       data.observacoes || null
@@ -383,7 +395,13 @@ const updateCarregamento = (req, res) => {
     const empresaId = req.empresaId || req.user?.empresa_id || 1;
     const data = req.body;
 
-    const existing = db.prepare('SELECT * FROM carregamentos WHERE id = ? AND empresa_id = ?').get(id, empresaId);
+    let existing;
+    if (req.user?.role === 'super_admin') {
+      existing = db.prepare('SELECT * FROM carregamentos WHERE id = ?').get(id);
+    } else {
+      existing = db.prepare('SELECT * FROM carregamentos WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(id, Number(empresaId), String(empresaId));
+    }
+
     if (!existing) {
       return res.status(404).json({ error: 'Carregamento não encontrado.' });
     }
@@ -406,9 +424,14 @@ const updateCarregamento = (req, res) => {
       freteEst = Number((valorKg * pesoEst).toFixed(2));
     }
 
+    const isTriangularVal = data.is_triangular !== undefined 
+      ? (data.is_triangular === 1 || data.is_triangular === true || data.is_triangular === '1' ? 1 : 0) 
+      : existing.is_triangular;
+
     db.prepare(`
       UPDATE carregamentos SET
         status = ?,
+        modalidade = ?,
         motorista_id = ?,
         motorista_nome = ?,
         motorista_cpf = ?,
@@ -442,12 +465,17 @@ const updateCarregamento = (req, res) => {
         peso_estimado_kg = ?,
         valor_frete_estimado = ?,
         valor_adiantamento_combinado = ?,
+        valor_frete_tomador_kg = ?,
+        valor_frete_tomador_total = ?,
+        comissao_agenciamento_tipo = ?,
+        comissao_agenciamento_valor = ?,
         previsao_saida = ?,
         observacoes = ?,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND empresa_id = ?
+      WHERE id = ?
     `).run(
       data.status || existing.status,
+      data.modalidade || existing.modalidade || 'gestao_pagamentos',
       data.motorista_id !== undefined ? data.motorista_id : existing.motorista_id,
       data.motorista_nome ? data.motorista_nome.trim() : existing.motorista_nome,
       data.motorista_cpf !== undefined ? data.motorista_cpf : existing.motorista_cpf,
@@ -464,7 +492,7 @@ const updateCarregamento = (req, res) => {
       data.origem_endereco !== undefined ? data.origem_endereco : existing.origem_endereco,
       lat,
       lng,
-      data.is_triangular !== undefined ? (data.is_triangular ? 1 : 0) : existing.is_triangular,
+      isTriangularVal,
       data.intermediador_id !== undefined ? data.intermediador_id : existing.intermediador_id,
       data.intermediador_nome !== undefined ? data.intermediador_nome : existing.intermediador_nome,
       data.intermediador_cnpj !== undefined ? data.intermediador_cnpj : existing.intermediador_cnpj,
@@ -481,13 +509,16 @@ const updateCarregamento = (req, res) => {
       pesoEst,
       freteEst,
       data.valor_adiantamento_combinado !== undefined ? Number(data.valor_adiantamento_combinado) : existing.valor_adiantamento_combinado,
+      data.valor_frete_tomador_kg !== undefined ? Number(data.valor_frete_tomador_kg) : existing.valor_frete_tomador_kg,
+      data.valor_frete_tomador_total !== undefined ? Number(data.valor_frete_tomador_total) : existing.valor_frete_tomador_total,
+      data.comissao_agenciamento_tipo || existing.comissao_agenciamento_tipo || 'percentual',
+      data.comissao_agenciamento_valor !== undefined ? Number(data.comissao_agenciamento_valor) : existing.comissao_agenciamento_valor,
       data.previsao_saida !== undefined ? data.previsao_saida : existing.previsao_saida,
       data.observacoes !== undefined ? data.observacoes : existing.observacoes,
-      id,
-      empresaId
+      existing.id
     );
 
-    const updated = db.prepare('SELECT * FROM carregamentos WHERE id = ?').get(id);
+    const updated = db.prepare('SELECT * FROM carregamentos WHERE id = ?').get(existing.id);
     return res.json({ message: 'Carregamento atualizado com sucesso!', carregamento: updated });
   } catch (error) {
     console.error('Erro ao atualizar carregamento:', error);
@@ -503,12 +534,18 @@ const deleteCarregamento = (req, res) => {
     const { id } = req.params;
     const empresaId = req.empresaId || req.user?.empresa_id || 1;
 
-    const existing = db.prepare('SELECT * FROM carregamentos WHERE id = ? AND empresa_id = ?').get(id, empresaId);
+    let existing;
+    if (req.user?.role === 'super_admin') {
+      existing = db.prepare('SELECT * FROM carregamentos WHERE id = ?').get(id);
+    } else {
+      existing = db.prepare('SELECT * FROM carregamentos WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(id, Number(empresaId), String(empresaId));
+    }
+
     if (!existing) {
       return res.status(404).json({ error: 'Carregamento não encontrado.' });
     }
 
-    db.prepare('DELETE FROM carregamentos WHERE id = ? AND empresa_id = ?').run(id, empresaId);
+    db.prepare('DELETE FROM carregamentos WHERE id = ?').run(existing.id);
     return res.json({ message: 'Carregamento removido com sucesso!' });
   } catch (error) {
     return res.status(500).json({ error: 'Erro ao excluir carregamento: ' + error.message });
@@ -600,11 +637,18 @@ const importarCteCarregamento = (req, res) => {
       valorFreteMotoristaReal = Number(carregamento.valor_frete_estimado) || Number(cte1.valor_frete_compra) || valorCte1;
     }
 
-    // 4. Cálculo do VALOR POR FORA (Complemento entre o Frete Real Total e o Valor Fiscal do CT-e)
+    // 4. Modalidade da Operação e Definição das Regras Financeiras
+    const empresaObj = db.prepare('SELECT modo_operacao, percentual_comissao_padrao FROM empresas WHERE id = ?').get(empresaId);
+    const modalidade = carregamento.modalidade || empresaObj?.modo_operacao || 'gestao_pagamentos';
+    const isGestao = modalidade === 'gestao_pagamentos';
+    const isAgenciamento = modalidade === 'agenciamento_repasse';
+    const isSubcontratacao = !isGestao && !isAgenciamento;
+
+    // 5. Cálculo do VALOR POR FORA (Complemento entre o Frete Real Total e o Valor Fiscal do CT-e)
     const valorPorFora = Number(Math.max(0, valorFreteMotoristaReal - valorCteTotal).toFixed(2));
     const valorEstimadoInicial = Number(carregamento.valor_frete_estimado) || Number(((carregamento.peso_estimado_kg || 0) * valorKg).toFixed(2));
 
-    // 5. Tratamento de Venda Triangular / Repasse ao Intermediador
+    // 6. Tratamento de Venda Triangular / Repasse ao Intermediador
     const isTriangular = Boolean(carregamento.is_triangular || cte2 || carregamento.intermediador_nome);
     let valorRepasse = 0;
     if (isTriangular) {
@@ -622,15 +666,48 @@ const importarCteCarregamento = (req, res) => {
     const valorAdiantamento = Number(carregamento.valor_adiantamento_combinado) || 0;
     const valorSaldoMotorista = Math.max(0, Number((valorFreteMotoristaReal - valorAdiantamento).toFixed(2)));
 
+    // 7. Definição do Faturamento / Contas a Receber conforme a modalidade
+    let valorReceberTomador = 0;
+    let valorComissaoAgenciamento = 0;
+
+    if (isSubcontratacao) {
+      // Regra Subcontratação: o cliente tomador paga o CT-e + Por Fora (ou valor negociado por kg/total)
+      if (Number(carregamento.valor_frete_tomador_total) > 0) {
+        valorReceberTomador = Number(carregamento.valor_frete_tomador_total);
+      } else if (Number(carregamento.valor_frete_tomador_kg) > 0) {
+        valorReceberTomador = Number((pesoRealKg * Number(carregamento.valor_frete_tomador_kg)).toFixed(2));
+      } else {
+        valorReceberTomador = Number((valorCteTotal + valorPorFora).toFixed(2));
+      }
+    } else if (isAgenciamento) {
+      // Regra Agenciamento: a agência recebe o lucro ou comissão de agenciamento
+      if (Number(carregamento.comissao_agenciamento_valor) > 0) {
+        if (carregamento.comissao_agenciamento_tipo === 'fixo') {
+          valorComissaoAgenciamento = Number(carregamento.comissao_agenciamento_valor);
+        } else {
+          valorComissaoAgenciamento = Number(((valorFreteMotoristaReal * Number(carregamento.comissao_agenciamento_valor)) / 100).toFixed(2));
+        }
+      } else if (Number(carregamento.valor_frete_tomador_total) > valorFreteMotoristaReal) {
+        valorComissaoAgenciamento = Number((Number(carregamento.valor_frete_tomador_total) - valorFreteMotoristaReal).toFixed(2));
+      } else {
+        const pctPadrao = Number(empresaObj?.percentual_comissao_padrao) || 5.0;
+        valorComissaoAgenciamento = Number(((valorFreteMotoristaReal * pctPadrao) / 100).toFixed(2));
+      }
+    }
+
     // Lucro / Margem da Empresa
-    const valorComissao = Number((valorCteTotal - valorFreteMotoristaReal - (isTriangular ? valorRepasse : 0)).toFixed(2));
-    const percentualMargem = valorCteTotal > 0 ? Number(((valorComissao / valorCteTotal) * 100).toFixed(1)) : 0;
+    const valorComissao = isAgenciamento 
+      ? valorComissaoAgenciamento 
+      : (isSubcontratacao ? Number((valorReceberTomador - valorFreteMotoristaReal - (isTriangular ? valorRepasse : 0)).toFixed(2)) : 0);
+    const percentualMargem = valorReceberTomador > 0 
+      ? Number(((valorComissao / valorReceberTomador) * 100).toFixed(1)) 
+      : (isAgenciamento && valorFreteMotoristaReal > 0 ? Number(((valorComissaoAgenciamento / valorFreteMotoristaReal) * 100).toFixed(1)) : 0);
 
     // Buscar ou vincular cliente tomador
     let clienteNome = cte1.cliente_nome || carregamento.destino_empresa_nome;
     let clienteCnpj = cte1.cliente_cnpj || null;
 
-    // 6. Inserir na tabela `fretes` oficial do SisFrete PRO com valor_por_fora
+    // 8. Inserir na tabela `fretes` oficial do SisFrete PRO
     const insertFreteStmt = db.prepare(`
       INSERT INTO fretes (
         empresa_id, tipo_operacao, origem_registro,
@@ -656,14 +733,14 @@ const importarCteCarregamento = (req, res) => {
         ?, ?, ?, ?,
         ?, ?, ?,
         ?, ?,
-        'em_transito', ?, 'pendente',
+        'em_transito', ?, ?,
         ?, ?
       )
     `);
 
     const freteResult = insertFreteStmt.run(
       empresaId,
-      isTriangular ? 'triangular' : 'padrao',
+      isGestao ? 'gestao_pagamentos' : (isAgenciamento ? 'agenciamento_repasse' : (isTriangular ? 'triangular' : 'subcontratacao_tradicional')),
       cte1.numero_cte || 'S/N',
       cte1.serie_cte || '1',
       cte1.chave_cte || '',
@@ -689,7 +766,7 @@ const importarCteCarregamento = (req, res) => {
       cte2 ? cte2.cliente_cnpj : (carregamento.intermediador_cnpj || null),
       valorCte2,
       pesoCte2,
-      valorCte1,
+      isSubcontratacao ? valorReceberTomador : (isAgenciamento ? Number((valorFreteMotoristaReal + valorComissaoAgenciamento).toFixed(2)) : valorCte1),
       valorFreteMotoristaReal,
       valorFreteMotoristaReal,
       valorPorFora,
@@ -699,8 +776,9 @@ const importarCteCarregamento = (req, res) => {
       valorAdiantamento,
       valorSaldoMotorista,
       valorAdiantamento > 0 ? 'adiantamento_pago' : 'pendente',
+      isGestao ? 'nao_aplicavel' : 'pendente',
       xmlContent1,
-      `Origem: Carregamento #${carregamento.id} (${carregamento.fornecedor_nome} - ${carregamento.origem_cidade}/${carregamento.origem_uf}). Combinado: R$ ${valorKg}/kg. CT-e Fiscal: R$ ${valorCteTotal.toFixed(2)} | Por Fora: R$ ${valorPorFora.toFixed(2)}.`
+      `Origem: Carregamento #${carregamento.id} (${modalidade.toUpperCase()} - ${carregamento.fornecedor_nome} - ${carregamento.origem_cidade}/${carregamento.origem_uf}). Combinado: R$ ${valorKg}/kg. CT-e Fiscal: R$ ${valorCteTotal.toFixed(2)} | Por Fora: R$ ${valorPorFora.toFixed(2)}.`
     );
 
     const novoFreteId = Number(freteResult.lastInsertRowid);
@@ -716,17 +794,19 @@ const importarCteCarregamento = (req, res) => {
       } catch (e) {}
     }
 
-    // 7. Lançamento Automático no Módulo FINANCEIRO (`financeiro_titulos`)
+    // 9. Lançamento Automático no Módulo FINANCEIRO (`financeiro_titulos`)
     const dataVencimentoPadrao = new Date();
     dataVencimentoPadrao.setDate(dataVencimentoPadrao.getDate() + 3);
     const dataVencStr = dataVencimentoPadrao.toISOString().slice(0, 10);
+    const titulosGerados = [];
 
-    // 7.1 TÍTULO A PAGAR: Motorista / Freteiro (Valor Real do Frete com discriminação CT-e vs Por Fora)
+    // 9.1 TÍTULO A PAGAR: Motorista / Freteiro (Valor Real do Frete com discriminação CT-e vs Por Fora)
+    // Gerado para TODAS as modalidades (Gestão de Pagamentos, Subcontratação e Agenciamento)
     const descTituloMotorista = valorPorFora > 0
       ? `Frete CT-e Nº ${cte1.numero_cte || 'S/N'} - Motorista: ${carregamento.motorista_nome} (${carregamento.placa_cavalo}) - Total Real: R$ ${valorFreteMotoristaReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (CT-e: R$ ${valorCteTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + Por Fora: R$ ${valorPorFora.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) - ${pesoRealKg.toLocaleString('pt-BR')} kg @ R$ ${valorKg}/kg`
       : `Frete CT-e Nº ${cte1.numero_cte || 'S/N'} - Motorista: ${carregamento.motorista_nome} (${carregamento.placa_cavalo}) - ${pesoRealKg.toLocaleString('pt-BR')} kg @ R$ ${valorKg}/kg`;
 
-    db.prepare(`
+    const resPagMotorista = db.prepare(`
       INSERT INTO financeiro_titulos (
         empresa_id, tipo, origem, frete_id, categoria, categoria_nome,
         descricao, pessoa_nome, pessoa_documento, valor, valor_pago,
@@ -749,9 +829,19 @@ const importarCteCarregamento = (req, res) => {
       `Gerado pelo Carregamento #${carregamento.id}. Balança: ${pesoRealKg.toLocaleString('pt-BR')} kg @ R$ ${valorKg}/kg. CT-e Fiscal: R$ ${valorCteTotal.toFixed(2)}. Por Fora: R$ ${valorPorFora.toFixed(2)}.`
     );
 
-    // 7.2 TÍTULO A PAGAR (Se Triangular): Repasse à Empresa Intermediadora
+    titulosGerados.push({
+      id: Number(resPagMotorista.lastInsertRowid),
+      tipo: 'pagar',
+      beneficiario: carregamento.motorista_nome,
+      categoria: 'Frete a Pagar (Motorista/Freteiro)',
+      valor: valorFreteMotoristaReal,
+      descricao: descTituloMotorista
+    });
+
+    // 9.2 TÍTULO A PAGAR (Se Triangular): Repasse à Empresa Intermediadora
     if (isTriangular && valorRepasse > 0) {
-      db.prepare(`
+      const descRepasse = `Repasse Venda Triangular - Intermediadora: ${carregamento.intermediador_nome || 'Parceiro'} (Ref CT-e Nº ${cte1.numero_cte || 'S/N'})`;
+      const resRepasse = db.prepare(`
         INSERT INTO financeiro_titulos (
           empresa_id, tipo, origem, frete_id, categoria, categoria_nome,
           descricao, pessoa_nome, pessoa_documento, valor, valor_pago,
@@ -764,40 +854,110 @@ const importarCteCarregamento = (req, res) => {
       `).run(
         empresaId,
         novoFreteId,
-        `Repasse Venda Triangular - Intermediadora: ${carregamento.intermediador_nome || 'Parceiro'} (Ref CT-e Nº ${cte1.numero_cte || 'S/N'})`,
+        descRepasse,
         carregamento.intermediador_nome || 'Intermediador Triangular',
         carregamento.intermediador_cnpj || null,
         valorRepasse,
         dataVencStr,
         `Repasse comercial de venda triangular gerado pelo Carregamento #${carregamento.id}.`
       );
+
+      titulosGerados.push({
+        id: Number(resRepasse.lastInsertRowid),
+        tipo: 'pagar',
+        beneficiario: carregamento.intermediador_nome || 'Intermediador Triangular',
+        categoria: 'Repasse Venda Triangular',
+        valor: valorRepasse,
+        descricao: descRepasse
+      });
     }
 
-    // 7.3 TÍTULO A RECEBER: Faturamento de CT-e dos Clientes Tomadores
-    if (valorCteTotal > 0) {
-      db.prepare(`
+    // 9.3 TÍTULO A RECEBER: CONDICIONADO RIGOROSAMENTE À MODALIDADE DE OPERAÇÃO
+    if (isGestao) {
+      // -------------------------------------------------------------------------
+      // MODALIDADE 1: GESTÃO DE PAGAMENTOS
+      // -------------------------------------------------------------------------
+      // REGRA: NÃO DEVE GERAR FINANCEIRO DE CONTAS A RECEBER.
+      // A empresa é tomadora do frete e não transportadora/agenciadora.
+    } else if (isSubcontratacao && valorReceberTomador > 0) {
+      // -------------------------------------------------------------------------
+      // MODALIDADE 2: SUBCONTRATAÇÃO TRADICIONAL (TRANSPORTADORA)
+      // -------------------------------------------------------------------------
+      // REGRA: DEVE GERAR O FINANCEIRO A RECEBER COM 1500 DO CT-E + VALOR POR FORA!
+      const descReceberSub = valorPorFora > 0
+        ? `Faturamento Frete Subcontratado - CT-e Nº ${cte1.numero_cte || 'S/N'} (${clienteNome}) - Total: R$ ${valorReceberTomador.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (CT-e: R$ ${valorCteTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} + Por Fora: R$ ${valorPorFora.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+        : `Faturamento Frete Subcontratado - CT-e Nº ${cte1.numero_cte || 'S/N'} (${clienteNome})`;
+
+      const resRecSub = db.prepare(`
         INSERT INTO financeiro_titulos (
           empresa_id, tipo, origem, frete_id, categoria, categoria_nome,
           descricao, pessoa_nome, pessoa_documento, valor, valor_pago,
           data_emissao, data_vencimento, status, forma_pagamento, observacoes
         ) VALUES (
-          ?, 'receber', 'frete_cte', ?, 'faturamento_frete', 'Recebimento de CT-e (Tomador)',
+          ?, 'receber', 'frete_cte', ?, 'faturamento_frete', 'Recebimento de Frete (Tomador)',
           ?, ?, ?, ?, 0,
           DATE('now'), ?, 'pendente', 'Boleto / PIX', ?
         )
       `).run(
         empresaId,
         novoFreteId,
-        `Faturamento CT-e Nº ${cte1.numero_cte || 'S/N'}${cte2 ? ' + Nº ' + cte2.numero_cte : ''} (${clienteNome})`,
+        descReceberSub,
         clienteNome,
         clienteCnpj,
-        valorCteTotal,
+        valorReceberTomador,
         dataVencStr,
-        `Lançamento automático de receita de frete gerado pelo Carregamento #${carregamento.id}.`
+        `Faturamento de frete subcontratado gerado pelo Carregamento #${carregamento.id}. Balança: ${pesoRealKg} kg. CT-e Fiscal: R$ ${valorCteTotal.toFixed(2)}. Por Fora: R$ ${valorPorFora.toFixed(2)}.`
       );
+
+      titulosGerados.push({
+        id: Number(resRecSub.lastInsertRowid),
+        tipo: 'receber',
+        pagador: clienteNome,
+        categoria: 'Recebimento de Frete (Tomador)',
+        valor: valorReceberTomador,
+        descricao: descReceberSub
+      });
+    } else if (isAgenciamento && valorComissaoAgenciamento > 0) {
+      // -------------------------------------------------------------------------
+      // MODALIDADE 3: AGENCIAMENTO & REPASSE
+      // -------------------------------------------------------------------------
+      // REGRA: DEVE GERAR UM A RECEBER NO VALOR DO LUCRO OU COMISSÃO DE AGENCIAMENTO!
+      const pagadorComissao = clienteNome || carregamento.fornecedor_nome || 'Contratante do Agenciamento';
+      const docPagador = clienteCnpj || null;
+      const descComissao = `Comissão de Agenciamento - CT-e Nº ${cte1.numero_cte || 'S/N'} (${pagadorComissao}) - Ref. Motorista: ${carregamento.motorista_nome} (Frete: R$ ${valorFreteMotoristaReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`;
+
+      const resRecCom = db.prepare(`
+        INSERT INTO financeiro_titulos (
+          empresa_id, tipo, origem, frete_id, categoria, categoria_nome,
+          descricao, pessoa_nome, pessoa_documento, valor, valor_pago,
+          data_emissao, data_vencimento, status, forma_pagamento, observacoes
+        ) VALUES (
+          ?, 'receber', 'frete_cte', ?, 'comissao_agenciamento', 'Comissão de Agenciamento a Receber',
+          ?, ?, ?, ?, 0,
+          DATE('now'), ?, 'pendente', 'Boleto / PIX', ?
+        )
+      `).run(
+        empresaId,
+        novoFreteId,
+        descComissao,
+        pagadorComissao,
+        docPagador,
+        valorComissaoAgenciamento,
+        dataVencStr,
+        `Comissão / Lucro de agenciamento de frete gerado pelo Carregamento #${carregamento.id}.`
+      );
+
+      titulosGerados.push({
+        id: Number(resRecCom.lastInsertRowid),
+        tipo: 'receber',
+        pagador: pagadorComissao,
+        categoria: 'Comissão de Agenciamento a Receber',
+        valor: valorComissaoAgenciamento,
+        descricao: descComissao
+      });
     }
 
-    // 8. Atualizar status do Carregamento para 'concluido' com valor_por_fora
+    // 10. Atualizar status do Carregamento para 'concluido'
     db.prepare(`
       UPDATE carregamentos SET
         status = 'concluido',
@@ -811,6 +971,7 @@ const importarCteCarregamento = (req, res) => {
         valor_cte_total = ?,
         valor_repasse_real = ?,
         valor_por_fora = ?,
+        valor_comissao_real = ?,
         data_cte_importado = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND empresa_id = ?
@@ -825,8 +986,9 @@ const importarCteCarregamento = (req, res) => {
       valorCteTotal,
       valorRepasse,
       valorPorFora,
+      isAgenciamento ? valorComissaoAgenciamento : valorComissao,
       id,
-      empIdNum
+      empresaId
     );
 
     const carregamentoAtualizado = db.prepare('SELECT * FROM carregamentos WHERE id = ?').get(id);
@@ -835,7 +997,10 @@ const importarCteCarregamento = (req, res) => {
       message: '🎉 CT-e importado com sucesso e lançado perfeitamente no Financeiro!',
       carregamento: carregamentoAtualizado,
       frete_id: novoFreteId,
+      modalidade,
       calculos: {
+        modalidade,
+        modalidade_label: isGestao ? 'Gestão de Pagamentos' : (isAgenciamento ? 'Agenciamento & Repasse' : 'Subcontratação'),
         peso_estimado_kg: Number(carregamento.peso_estimado_kg) || 0,
         peso_real_kg: pesoRealKg,
         valor_combinado_kg: valorKg,
@@ -848,7 +1013,15 @@ const importarCteCarregamento = (req, res) => {
         valor_repasse_intermediadora: valorRepasse,
         lucro_comissao_empresa: valorComissao,
         percentual_margem: percentualMargem,
-        is_triangular: isTriangular
+        is_triangular: isTriangular,
+        financeiro_a_pagar: valorFreteMotoristaReal,
+        financeiro_a_receber: isGestao ? 0 : (isSubcontratacao ? valorReceberTomador : valorComissaoAgenciamento),
+        financeiro_a_receber_label: isGestao 
+          ? 'Não gerado (Gestão de Pagamentos)' 
+          : (isSubcontratacao 
+              ? `Faturamento Tomador: R$ ${valorReceberTomador.toFixed(2)} (CT-e: R$ ${valorCteTotal.toFixed(2)} + Por Fora: R$ ${valorPorFora.toFixed(2)})`
+              : `Comissão/Lucro da Agência: R$ ${valorComissaoAgenciamento.toFixed(2)}`),
+        titulos_gerados: titulosGerados
       }
     });
 

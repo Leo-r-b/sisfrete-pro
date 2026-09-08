@@ -317,7 +317,7 @@ export default function CarregamentosList() {
                   <th className="py-3.5 px-4">Inclusão</th>
                   <th className="py-3.5 px-4">Destino (Cliente)</th>
                   <th className="py-3.5 px-4">Valor Combinado</th>
-                  <th className="py-3.5 px-4 text-center">Operação</th>
+                  <th className="py-3.5 px-4 text-center">Operação / Modalidade</th>
                   <th className="py-3.5 px-4 text-right">Ações</th>
                 </tr>
               </thead>
@@ -419,18 +419,35 @@ export default function CarregamentosList() {
                         )}
                       </td>
 
-                      {/* Operação (Triangular ou Padrão) */}
+                      {/* Operação & Modalidade */}
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        {item.is_triangular ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 text-[10px] font-semibold border border-purple-500/20" title={`Intermediadora: ${item.intermediador_nome || '-'}`}>
-                            <Layers className="w-3 h-3" />
-                            Triangular
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 text-[10px]">
-                            Padrão
-                          </span>
-                        )}
+                        <div className="flex flex-col items-center gap-1">
+                          {/* Modalidade */}
+                          {item.modalidade === 'gestao_pagamentos' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 text-[10px] font-bold border border-amber-500/20" title="Gestão de Pagamentos (Sem Contas a Receber)">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              Gestão
+                            </span>
+                          ) : item.modalidade === 'agenciamento_repasse' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 text-[10px] font-bold border border-purple-500/20" title="Agenciamento (Recebe Comissão)">
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+                              Agenciamento
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 text-[10px] font-bold border border-blue-500/20" title="Subcontratação (Fatura CT-e + Por Fora)">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                              Subcontratação
+                            </span>
+                          )}
+
+                          {/* Triangular */}
+                          {item.is_triangular ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 text-[9px] font-medium border border-purple-500/20" title={`Intermediadora: ${item.intermediador_nome || '-'}`}>
+                              <Layers className="w-2.5 h-2.5" />
+                              Triangular
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
 
                       {/* Ações */}
