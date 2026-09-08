@@ -11,6 +11,7 @@ function generateToken(user) {
       email: user.email,
       role: user.role,
       empresa_id: empresaId,
+      pode_alternar_empresa: (user.pode_alternar_empresa || user.role === 'super_admin') ? 1 : 0,
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -31,8 +32,23 @@ function authMiddleware(req, res, next) {
 
     // Tenant Context:
     // 1. Super Admin (Ghost Master): pode chavear empresa via header x-empresa-id
-    // 2. Administrador normal e operadores: SEMPRE restritos ao req.user.empresa_id
+    // 2. Usuário com permissão pode_alternar_empresa: pode chavear empresa via header x-empresa-id
+    // 3. Demais colaboradores: SEMPRE restritos ao req.user.empresa_id
     const headerEmpresaId = req.headers['x-empresa-id'];
+    let podeAlternar = req.user.role === 'super_admin' || Boolean(req.user.pode_alternar_empresa);
+
+    // Fallback: se o token foi emitido antes da concessão da permissão
+    if (!podeAlternar && req.user.id && headerEmpresaId) {
+      try {
+        const db = require('../config/database');
+        const u = db.prepare('SELECT pode_alternar_empresa FROM users WHERE id = ?').get(req.user.id);
+        if (u && u.pode_alternar_empresa) {
+          podeAlternar = true;
+          req.user.pode_alternar_empresa = 1;
+        }
+      } catch (e) {}
+    }
+
     if (req.user.role === 'super_admin') {
       if (headerEmpresaId && !isNaN(parseInt(headerEmpresaId, 10))) {
         req.empresaId = parseInt(headerEmpresaId, 10);
@@ -42,8 +58,10 @@ function authMiddleware(req, res, next) {
         // Super Admin opera em modo global desvinculado
         req.empresaId = null;
       }
+    } else if (podeAlternar && headerEmpresaId && !isNaN(parseInt(headerEmpresaId, 10))) {
+      req.empresaId = parseInt(headerEmpresaId, 10);
     } else {
-      req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : null;
+      req.empresaId = req.user.empresa_id ? parseInt(req.user.empresa_id, 10) : 1;
     }
 
     next();

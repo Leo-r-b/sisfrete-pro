@@ -19,7 +19,8 @@ import {
   X,
   PanelLeftClose,
   PanelLeftOpen,
-  Radio
+  Radio,
+  ChevronDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -33,7 +34,7 @@ export default function Sidebar({
   isCollapsed = false,
   onToggleCollapse
 }) {
-  const { user, activeEmpresa, logout, getModulosAtivosList } = useAuth();
+  const { user, empresas, activeEmpresa, switchEmpresa, logout, getModulosAtivosList } = useAuth();
   const isLicencaGestao = activeEmpresa?.modo_operacao === 'gestao_pagamentos';
   const isLicencaRepasse = activeEmpresa?.modo_operacao === 'agenciamento_repasse';
 
@@ -212,6 +213,30 @@ export default function Sidebar({
         <div className={`p-2.5 sm:p-3 border-t border-slate-800 bg-slate-900/60 ${isCollapsed ? 'flex flex-col items-center gap-2' : ''}`}>
           {!isCollapsed ? (
             <>
+              {/* Seletor rápido de Empresa para telas compactas / gaveta mobile */}
+              {(isSuperAdmin || Boolean(user?.pode_alternar_empresa)) && empresas && empresas.length > 1 && (
+                <div className="mb-2.5 p-2 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                    🏢 Empresa / Licença Ativa
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={activeEmpresa?.id || 1}
+                      onChange={(e) => switchEmpresa(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-2.5 py-1 text-xs font-semibold focus:outline-none focus:border-blue-500 cursor-pointer appearance-none truncate pr-6"
+                      title="Alternar entre empresas disponíveis"
+                    >
+                      {empresas.map((emp) => (
+                        <option key={emp.id} value={emp.id} className="bg-slate-900 text-white py-1">
+                          {isSuperAdmin ? '👑 ' : '🏢 '}#{emp.codigo_licenca || emp.id} - {emp.nome_fantasia || emp.razao_social}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-2.5 mb-2">
                 <div className="h-8 w-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-blue-400 flex-shrink-0">
                   {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}

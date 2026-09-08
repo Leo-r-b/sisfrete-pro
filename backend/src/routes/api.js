@@ -212,6 +212,7 @@ router.put('/clientes/:id', authMiddleware, clienteController.updateCliente);
 router.delete('/clientes/:id', authMiddleware, requireRole(['admin', 'super_admin']), clienteController.deleteCliente);
 
 router.get('/empresa', authMiddleware, empresaController.getEmpresaConfig);
+router.get('/empresas-disponiveis', authMiddleware, empresaController.listEmpresasDisponiveis);
 router.put('/empresa', authMiddleware, requireRole(['admin', 'super_admin']), empresaController.updateEmpresaConfig);
 router.get('/config/database-stats', authMiddleware, requireRole(['admin', 'super_admin']), empresaController.getDatabaseStats);
 router.post('/config/reset-database', authMiddleware, requireRole(['admin', 'super_admin']), empresaController.resetDatabase);

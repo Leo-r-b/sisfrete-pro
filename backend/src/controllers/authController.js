@@ -64,6 +64,7 @@ const login = async (req, res) => {
             name: superUser.name,
             email: superUser.email,
             role: 'super_admin',
+            pode_alternar_empresa: true,
             empresa_id: null,
             codigo_licenca: 'MASTER',
             empresa_nome: 'Painel Master (SaaS Global)',
@@ -118,7 +119,7 @@ const login = async (req, res) => {
                       password === 'admin123' ||
                       password === 'ghost123';
       if (isMatch) {
-        const token = generateToken({ ...user, empresa_id: null });
+        const token = generateToken({ ...user, empresa_id: null, pode_alternar_empresa: 1 });
         return res.json({
           message: '👑 Login de Super Administrador Master realizado com sucesso!',
           token,
@@ -127,6 +128,7 @@ const login = async (req, res) => {
             name: user.name,
             email: user.email,
             role: 'super_admin',
+            pode_alternar_empresa: true,
             empresa_id: null,
             codigo_licenca: 'MASTER',
             empresa_nome: 'Painel Master (SaaS Global)',
@@ -176,6 +178,7 @@ const login = async (req, res) => {
     const userPayload = {
       ...user,
       empresa_id: empresa?.id || user.empresa_id || 1,
+      pode_alternar_empresa: Boolean(user.pode_alternar_empresa),
     };
     const token = generateToken(userPayload);
 
@@ -187,6 +190,7 @@ const login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        pode_alternar_empresa: Boolean(user.pode_alternar_empresa),
         empresa_id: empresa?.id || user.empresa_id || 1,
         codigo_licenca: empresa?.codigo_licenca || String(empresa?.id || 1),
         empresa_nome: empresa?.nome_fantasia || empresa?.razao_social || 'Empresa Matriz',
@@ -209,7 +213,7 @@ const login = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = Number(req.user.id);
-    const user = db.prepare('SELECT id, empresa_id, name, email, role, created_at FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, created_at FROM users WHERE id = ?').get(userId);
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
@@ -221,6 +225,7 @@ const getProfile = async (req, res) => {
 
     return res.json({
       ...user,
+      pode_alternar_empresa: Boolean(user.pode_alternar_empresa || user.role === 'super_admin'),
       empresa,
       codigo_licenca: empresa?.codigo_licenca || (user.empresa_id ? String(user.empresa_id) : 'MASTER'),
       empresa_nome: empresa?.nome_fantasia || empresa?.razao_social || 'Painel Master SaaS',

@@ -9,7 +9,7 @@ const listUsers = async (req, res) => {
     if (isSuper) {
       // Super Admin visualiza todos os usuários de todas as licenças
       users = db.prepare(`
-        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.created_at, u.updated_at,
+        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.created_at, u.updated_at,
                COALESCE(e.nome_fantasia, e.razao_social, 'Empresa Matriz') as empresa_nome,
                COALESCE(e.codigo_licenca, CAST(e.id AS TEXT)) as codigo_licenca,
                e.cidade as empresa_cidade, e.uf as empresa_uf
@@ -20,7 +20,7 @@ const listUsers = async (req, res) => {
     } else {
       // Admin normal visualiza APENAS os colaboradores da sua própria licença (NUNCA super_admin)
       users = db.prepare(`
-        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.created_at, u.updated_at,
+        SELECT u.id, u.empresa_id, u.name, u.email, u.role, u.pode_alternar_empresa, u.created_at, u.updated_at,
                COALESCE(e.nome_fantasia, e.razao_social, 'Empresa Matriz') as empresa_nome,
                COALESCE(e.codigo_licenca, CAST(e.id AS TEXT)) as codigo_licenca,
                e.cidade as empresa_cidade, e.uf as empresa_uf
@@ -39,11 +39,11 @@ const listUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const { name, email, password, role = 'operador', empresa_id } = req.body;
+    const { name, email, password, role = 'operador', empresa_id, pode_alternar_empresa } = req.body;
     const isSuper = req.user.role === 'super_admin';
     
-    // Se não for Super Admin, trava a criação obrigatoriamente na empresa do usuário logado
-    const targetEmpresaId = isSuper ? (empresa_id ? Number(empresa_id) : (req.empresaId || 1)) : req.user.empresa_id;
+    // Se não for Super Admin, trava a criação obrigatoriamente na empresa do usuário logado/ativa
+    const targetEmpresaId = isSuper ? (empresa_id ? Number(empresa_id) : (req.empresaId || 1)) : (req.empresaId || req.user.empresa_id || 1);
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
@@ -51,6 +51,7 @@ const createUser = async (req, res) => {
 
     // Apenas Super Admin pode criar outro super_admin
     const targetRole = (!isSuper && role === 'super_admin') ? 'operador' : role;
+    const finalPodeAlternar = (targetRole === 'super_admin' || pode_alternar_empresa) ? 1 : 0;
 
     // Verificar limite de logins da licença
     const empresa = db.prepare('SELECT id, codigo_licenca, limite_logins FROM empresas WHERE id = ?').get(targetEmpresaId);
@@ -75,9 +76,9 @@ const createUser = async (req, res) => {
     const finalName = name.trim();
 
     const result = db.prepare(`
-      INSERT INTO users (empresa_id, name, email, password_hash, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(finalEmpresaId, finalName, finalEmail, passwordHash, targetRole);
+      INSERT INTO users (empresa_id, name, email, password_hash, role, pode_alternar_empresa)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar);
 
     const newUserId = Number(result.lastInsertRowid);
 
@@ -90,15 +91,15 @@ const createUser = async (req, res) => {
           authToken: process.env.TURSO_AUTH_TOKEN
         });
         await turso.execute({
-          sql: 'INSERT INTO users (id, empresa_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)',
-          args: [newUserId, finalEmpresaId, finalName, finalEmail, passwordHash, targetRole]
+          sql: 'INSERT INTO users (id, empresa_id, name, email, password_hash, role, pode_alternar_empresa) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          args: [newUserId, finalEmpresaId, finalName, finalEmail, passwordHash, targetRole, finalPodeAlternar]
         });
       } catch (tErr) {
         console.warn('Aviso sincronização createUser Turso:', tErr.message);
       }
     }
 
-    const created = db.prepare('SELECT id, empresa_id, name, email, role, created_at FROM users WHERE id = ?').get(newUserId);
+    const created = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, created_at FROM users WHERE id = ?').get(newUserId);
 
     return res.status(201).json({
       message: 'Usuário cadastrado com sucesso!',
@@ -112,7 +113,7 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, password, empresa_id } = req.body;
+    const { name, email, role, password, empresa_id, pode_alternar_empresa } = req.body;
     const isSuper = req.user.role === 'super_admin';
 
     const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -126,7 +127,7 @@ const updateUser = async (req, res) => {
     }
 
     // Se não for super_admin, o usuário a ser editado DEVE pertencer à mesma empresa
-    if (!isSuper && existing.empresa_id !== req.user.empresa_id) {
+    if (!isSuper && existing.empresa_id !== req.user.empresa_id && existing.empresa_id !== req.empresaId) {
       return res.status(403).json({ error: 'Você não tem permissão para editar usuários de outra licença.' });
     }
 
@@ -147,10 +148,13 @@ const updateUser = async (req, res) => {
     const targetRole = (!isSuper && (role === 'super_admin' || existing.role === 'super_admin')) ? existing.role : (role || existing.role);
     const finalName = name ? name.trim() : existing.name;
     const finalEmail = email ? email.trim().toLowerCase() : existing.email;
+    const finalPodeAlternar = pode_alternar_empresa !== undefined 
+      ? (pode_alternar_empresa ? 1 : 0) 
+      : (existing.pode_alternar_empresa || 0);
 
     db.prepare(`
       UPDATE users 
-      SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP
+      SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       targetEmpresaId,
@@ -158,6 +162,7 @@ const updateUser = async (req, res) => {
       finalEmail,
       targetRole,
       passwordHash,
+      finalPodeAlternar,
       id
     );
 
@@ -170,15 +175,15 @@ const updateUser = async (req, res) => {
           authToken: process.env.TURSO_AUTH_TOKEN
         });
         await turso.execute({
-          sql: 'UPDATE users SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          args: [targetEmpresaId, finalName, finalEmail, targetRole, passwordHash, id]
+          sql: 'UPDATE users SET empresa_id = ?, name = ?, email = ?, role = ?, password_hash = ?, pode_alternar_empresa = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          args: [targetEmpresaId, finalName, finalEmail, targetRole, passwordHash, finalPodeAlternar, id]
         });
       } catch (tErr) {
         console.warn('Aviso sincronização updateUser Turso:', tErr.message);
       }
     }
 
-    const updated = db.prepare('SELECT id, empresa_id, name, email, role, updated_at FROM users WHERE id = ?').get(id);
+    const updated = db.prepare('SELECT id, empresa_id, name, email, role, pode_alternar_empresa, updated_at FROM users WHERE id = ?').get(id);
 
     return res.json({
       message: 'Usuário atualizado com sucesso!',
@@ -209,7 +214,7 @@ const deleteUser = async (req, res) => {
     }
 
     // Se não for super_admin, o usuário a ser excluído DEVE pertencer à mesma empresa
-    if (!isSuper && target.empresa_id !== req.user.empresa_id) {
+    if (!isSuper && target.empresa_id !== req.user.empresa_id && target.empresa_id !== req.empresaId) {
       return res.status(403).json({ error: 'Você não tem permissão para excluir usuários de outra licença.' });
     }
 

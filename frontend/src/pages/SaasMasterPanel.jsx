@@ -441,6 +441,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
       password: '',
       role: 'admin',
       empresa_id: empresas[0]?.id || 1,
+      pode_alternar_empresa: false,
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -454,6 +455,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
       password: '',
       role: u.role,
       empresa_id: u.empresa_id || empresas[0]?.id || 1,
+      pode_alternar_empresa: Boolean(u.pode_alternar_empresa),
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -463,10 +465,14 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     e.preventDefault();
     setUserModalError('');
     try {
+      const payload = {
+        ...userForm,
+        pode_alternar_empresa: userForm.pode_alternar_empresa ? 1 : 0
+      };
       if (editingUser) {
-        await api.put(`/users/${editingUser.id}`, userForm);
+        await api.put(`/users/${editingUser.id}`, payload);
       } else {
-        await api.post('/users', userForm);
+        await api.post('/users', payload);
       }
       setIsUserModalOpen(false);
       loadGlobalUsers();
@@ -475,13 +481,26 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
     }
   };
 
-  const handleDeleteUser = async (id, name) => {
+    const handleDeleteUser = async (id, name) => {
     if (!window.confirm(`Deseja excluir o usuário "${name}"?`)) return;
     try {
       await api.delete(`/users/${id}`);
       loadGlobalUsers();
     } catch (err) {
       alert(err.response?.data?.error || 'Erro ao excluir usuário.');
+    }
+  };
+
+  const handleToggleMultiEmpresa = async (targetUser) => {
+    if (targetUser.role === 'super_admin') return;
+    const novoValor = !targetUser.pode_alternar_empresa;
+    try {
+      await api.put(`/users/${targetUser.id}`, {
+        pode_alternar_empresa: novoValor ? 1 : 0
+      });
+      await loadGlobalUsers();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao alterar permissão multi-empresa.');
     }
   };
 
@@ -1446,6 +1465,7 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                   <th className="px-3 py-2.5">E-mail (Login)</th>
                   <th className="px-3 py-2.5">Licença Vinculada</th>
                   <th className="px-3 py-2.5 text-center">Permissão</th>
+                  <th className="px-3 py-2.5 text-center">Alternar Empresas</th>
                   <th className="px-3 py-2.5">Criado em</th>
                   <th className="px-3 py-2.5 text-right">Ações</th>
                 </tr>
@@ -1482,6 +1502,36 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                         }`}>
                           {u.role}
                         </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {isMaster ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[11px] font-bold">
+                            👑 Total (Master)
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMultiEmpresa(u)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer select-none ${
+                              u.pode_alternar_empresa
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm shadow-emerald-500/20'
+                                : 'bg-slate-800/90 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                            }`}
+                            title={u.pode_alternar_empresa ? "Clique para desativar a troca de empresas deste usuário" : "Clique para permitir que este usuário alterne entre empresas sem deslogar"}
+                          >
+                            {u.pode_alternar_empresa ? (
+                              <>
+                                <Building2 className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>🏢 Liberado</span>
+                              </>
+                            ) : (
+                              <>
+                                <Building2 className="h-3.5 w-3.5 text-slate-500" />
+                                <span>🔒 Fixo na Licença</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-slate-400 text-[11px]">
                         {new Date(u.created_at).toLocaleDateString('pt-BR')}
@@ -2407,6 +2457,34 @@ export default function SaasMasterPanel({ onSelectEmpresaOperacional }) {
                   <option value="operador">Operador Logístico</option>
                 </select>
               </div>
+
+              {/* Permissão Multi-Empresas */}
+              {userForm.role !== 'super_admin' && (
+                <div 
+                  onClick={() => setUserForm(prev => ({ ...prev, pode_alternar_empresa: !prev.pode_alternar_empresa }))}
+                  className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                    userForm.pode_alternar_empresa 
+                      ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
+                      : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:border-slate-600'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(userForm.pode_alternar_empresa)}
+                    onChange={() => {}}
+                    className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Novo</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                      Permite que este colaborador alterne entre empresas diretamente pelo cabeçalho sem deslogar, mantendo seu nível de acesso.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button

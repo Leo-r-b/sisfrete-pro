@@ -14,6 +14,7 @@ export default function Navbar({
 }) {
   const { user, empresas, activeEmpresa, switchEmpresa, metodologiaAtiva, setMetodologiaAtiva } = useAuth();
   const isSuperAdmin = user?.role === 'super_admin';
+  const canSwitchEmpresas = isSuperAdmin || Boolean(user?.pode_alternar_empresa);
 
   return (
     <header className="h-14 sm:h-16 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20">
@@ -65,21 +66,25 @@ export default function Navbar({
           </div>
         )}
 
-        {/* SELETOR MULTI-EMPRESA / LICENÇA (SUPER ADMIN) OU IDENTIFICAÇÃO DA EMPRESA */}
+        {/* SELETOR MULTI-EMPRESA / LICENÇA OU IDENTIFICAÇÃO DA EMPRESA */}
         {activeEmpresa && (
           <div className="hidden lg:flex items-center">
-            {isSuperAdmin && empresas && empresas.length > 1 ? (
+            {canSwitchEmpresas && empresas && empresas.length > 1 ? (
               <div className="relative flex items-center">
-                <Building2 className="absolute left-2.5 h-3.5 w-3.5 text-purple-400 pointer-events-none" />
+                <Building2 className={`absolute left-2.5 h-3.5 w-3.5 ${isSuperAdmin ? 'text-purple-400' : 'text-blue-400'} pointer-events-none`} />
                 <select
                   value={activeEmpresa?.id || 1}
                   onChange={(e) => switchEmpresa(e.target.value)}
-                  className="pl-8 pr-7 py-1.5 bg-slate-800/90 hover:bg-slate-800 border border-purple-500/40 hover:border-purple-400 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition cursor-pointer appearance-none shadow-sm"
-                  title="👑 Acesso Ghost Master: Alternar entre qualquer licença do sistema"
+                  className={`pl-8 pr-7 py-1.5 bg-slate-800/90 hover:bg-slate-800 border ${
+                    isSuperAdmin
+                      ? 'border-purple-500/40 hover:border-purple-400 focus:ring-purple-500'
+                      : 'border-blue-500/40 hover:border-blue-400 focus:ring-blue-500'
+                  } rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 transition cursor-pointer appearance-none shadow-sm`}
+                  title={isSuperAdmin ? "👑 Acesso Ghost Master: Alternar entre qualquer licença do sistema" : "Alternar Empresa / Licença"}
                 >
                   {empresas.map((emp) => (
                     <option key={emp.id} value={emp.id} className="bg-slate-900 text-white font-medium py-1">
-                      👑 #{emp.codigo_licenca || emp.id} - {emp.nome_fantasia || emp.razao_social}
+                      {isSuperAdmin ? '👑 ' : '🏢 '}#{emp.codigo_licenca || emp.id} - {emp.nome_fantasia || emp.razao_social}
                     </option>
                   ))}
                 </select>

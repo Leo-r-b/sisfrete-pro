@@ -369,7 +369,8 @@ export default function Configuracoes() {
       permiteOperacional: true,
       permiteFinanceiro: false,
       isAdminLicenca: false,
-      isSuperAdminUser: false
+      isSuperAdminUser: false,
+      podeAlternarEmpresa: false
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -392,7 +393,8 @@ export default function Configuracoes() {
       permiteOperacional: isOp || isOpFin || isAdmin || isSuper,
       permiteFinanceiro: isFin || isOpFin || isAdmin || isSuper,
       isAdminLicenca: isAdmin,
-      isSuperAdminUser: isSuper
+      isSuperAdminUser: isSuper,
+      podeAlternarEmpresa: Boolean(u.pode_alternar_empresa)
     });
     setUserModalError('');
     setIsUserModalOpen(true);
@@ -426,7 +428,8 @@ export default function Configuracoes() {
         email: userFormData.email,
         password: userFormData.password,
         role: finalRole,
-        empresa_id: userFormData.empresa_id
+        empresa_id: userFormData.empresa_id,
+        pode_alternar_empresa: userFormData.podeAlternarEmpresa ? 1 : 0
       };
 
       if (editingUser) {
@@ -449,7 +452,7 @@ export default function Configuracoes() {
     }
   };
 
-  const handleDeleteUser = async (id, userName) => {
+    const handleDeleteUser = async (id, userName) => {
     if (!window.confirm(`Deseja excluir o usuário "${userName}"?`)) return;
     try {
       await api.delete(`/users/${id}`);
@@ -457,6 +460,19 @@ export default function Configuracoes() {
       fetchEmpresasDetailed();
     } catch (err) {
       alert(err.response?.data?.error || 'Erro ao excluir usuário.');
+    }
+  };
+
+  const handleToggleMultiEmpresa = async (targetUser) => {
+    if (targetUser.role === 'super_admin') return;
+    const novoValor = !targetUser.pode_alternar_empresa;
+    try {
+      await api.put(`/users/${targetUser.id}`, {
+        pode_alternar_empresa: novoValor ? 1 : 0
+      });
+      await loadUsers();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao alterar permissão multi-empresa.');
     }
   };
 
@@ -1096,12 +1112,15 @@ export default function Configuracoes() {
                   <th className="px-3 py-2.5">E-mail (Login)</th>
                   <th className="px-3 py-2.5">Licença / Empresa</th>
                   <th className="px-3 py-2.5 text-center">Permissões</th>
+                  <th className="px-3 py-2.5 text-center">Alternar Empresas</th>
                   <th className="px-3 py-2.5">Criado em</th>
                   <th className="px-3 py-2.5 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {usersList.map((u) => (
+                {usersList.map((u) => {
+                  const isMaster = u.role === 'super_admin';
+                  return (
                   <tr key={u.id} className="hover:bg-slate-800/40 transition">
                     <td className="px-3 py-2.5 font-semibold text-white">
                       {u.name}
@@ -1142,6 +1161,36 @@ export default function Configuracoes() {
                         </span>
                       )}
                     </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {isMaster ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[11px] font-bold">
+                          👑 Total (Master)
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleMultiEmpresa(u)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer select-none ${
+                            u.pode_alternar_empresa
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm shadow-emerald-500/20'
+                              : 'bg-slate-800/90 text-slate-400 border-slate-700 hover:border-slate-500 hover:text-white'
+                          }`}
+                          title={u.pode_alternar_empresa ? "Clique para desativar a troca de empresas deste usuário" : "Clique para permitir que este usuário alterne entre empresas sem deslogar"}
+                        >
+                          {u.pode_alternar_empresa ? (
+                            <>
+                              <Building2 className="h-3.5 w-3.5 text-emerald-400" />
+                              <span>🏢 Liberado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Building2 className="h-3.5 w-3.5 text-slate-500" />
+                              <span>🔒 Fixo na Licença</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 text-slate-400 text-[11px]">
                       {new Date(u.created_at).toLocaleDateString('pt-BR')}
                     </td>
@@ -1166,7 +1215,8 @@ export default function Configuracoes() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>
@@ -2504,6 +2554,34 @@ export default function Configuracoes() {
                     />
                     <div>
                       <strong className="text-xs text-amber-300 block">👑 Super Admin / Ghost Master (Acesso Global SaaS)</strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* Permissão Multi-Empresas (Alternar entre Empresas sem deslogar) */}
+                {!userFormData.isSuperAdminUser && (
+                  <div 
+                    onClick={() => setUserFormData(prev => ({ ...prev, podeAlternarEmpresa: !prev.podeAlternarEmpresa }))}
+                    className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-3 select-none ${
+                      userFormData.podeAlternarEmpresa 
+                        ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200 shadow-sm' 
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(userFormData.podeAlternarEmpresa)}
+                      onChange={() => {}}
+                      className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 pointer-events-none"
+                    />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-xs text-white block">🏢 Alternar Entre Empresas (Multi-Empresa)</strong>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">Novo</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                        Permite ao colaborador alternar entre as empresas/licenças cadastradas diretamente pelo seletor superior, sem precisar deslogar da conta. Não concede acesso ao Painel Master nem funções de faturamento.
+                      </p>
                     </div>
                   </div>
                 )}

@@ -763,8 +763,49 @@ const resetDatabase = async (req, res) => {
   }
 };
 
+// Listar empresas ativas disponíveis para alternância no cabeçalho
+const listEmpresasDisponiveis = async (req, res) => {
+  try {
+    const isSuper = req.user?.role === 'super_admin';
+    let podeAlternar = isSuper || Boolean(req.user?.pode_alternar_empresa);
+
+    if (!podeAlternar && req.user?.id) {
+      const u = db.prepare('SELECT pode_alternar_empresa FROM users WHERE id = ?').get(req.user.id);
+      if (u && u.pode_alternar_empresa) {
+        podeAlternar = true;
+      }
+    }
+
+    if (!podeAlternar) {
+      // Usuário sem permissão multi-empresa recebe apenas sua própria empresa
+      const targetId = req.empresaId || req.user?.empresa_id || 1;
+      const empresa = db.prepare(`
+        SELECT id, id as codigo, codigo_licenca, razao_social, nome_fantasia, cidade, uf, modo_operacao
+        FROM empresas
+        WHERE id = ? AND ativo = 1
+      `).all(targetId);
+      return res.json(empresa);
+    }
+
+    // Usuário autorizado (Super Admin ou permissão pode_alternar_empresa):
+    // Retorna todas as empresas ativas sem expor métricas financeiras sensíveis do SaaS
+    const empresas = db.prepare(`
+      SELECT id, id as codigo, codigo_licenca, razao_social, nome_fantasia, cidade, uf, modo_operacao
+      FROM empresas
+      WHERE ativo = 1
+      ORDER BY id ASC
+    `).all();
+
+    return res.json(empresas);
+  } catch (error) {
+    console.error('Erro ao listar empresas disponíveis:', error);
+    return res.status(500).json({ error: 'Erro ao listar empresas disponíveis.' });
+  }
+};
+
 module.exports = {
   listEmpresas,
+  listEmpresasDisponiveis,
   getEmpresaById,
   createEmpresa,
   updateEmpresa,

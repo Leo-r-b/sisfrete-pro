@@ -20,9 +20,11 @@ export function AuthProvider({ children }) {
 
   const loadEmpresas = async (currentUser) => {
     const activeUser = currentUser || user;
-    const activeRole = activeUser?.role;
+    const isSuper = activeUser?.role === 'super_admin';
+    const canSwitch = isSuper || Boolean(activeUser?.pode_alternar_empresa);
+
     try {
-      if (activeRole === 'super_admin') {
+      if (isSuper) {
         // Super Admin (Ghost Master) carrega todas as licenças do SaaS
         const res = await api.get('/empresas');
         setEmpresas(res.data || []);
@@ -42,8 +44,36 @@ export function AuthProvider({ children }) {
         const modo = (current?.modo_operacao === 'agenciamento_repasse' || current?.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
         setMetodologiaAtivaState(modo);
         localStorage.setItem('sisfrete_metodologia', modo);
+      } else if (canSwitch) {
+        // Usuário com permissão para alternar entre empresas (sem privilégios Master)
+        const res = await api.get('/empresas-disponiveis');
+        const listaEmpresas = res.data || [];
+        setEmpresas(listaEmpresas);
+
+        const storedActiveId = localStorage.getItem('sisfrete_active_empresa_id');
+        let current = null;
+        if (storedActiveId && listaEmpresas.length > 0) {
+          current = listaEmpresas.find((e) => String(e.id) === String(storedActiveId));
+        }
+        if (!current && listaEmpresas.length > 0) {
+          current = listaEmpresas.find((e) => String(e.id) === String(activeUser?.empresa_id)) || listaEmpresas[0];
+          localStorage.setItem('sisfrete_active_empresa_id', current.id);
+        }
+
+        // Carrega dados completos da empresa ativa via /empresa (ex: modulos_ativos)
+        try {
+          const empRes = await api.get('/empresa');
+          if (empRes.data) {
+            current = { ...current, ...empRes.data };
+          }
+        } catch (e) {}
+
+        setActiveEmpresa(current);
+        const modo = (current?.modo_operacao === 'agenciamento_repasse' || current?.modo_operacao === 'gestao_pagamentos') ? 'agenciamento' : 'transportadora';
+        setMetodologiaAtivaState(modo);
+        localStorage.setItem('sisfrete_metodologia', modo);
       } else {
-        // Administrador normal e operadores carregam SEMPRE os dados atualizados da sua licença
+        // Administrador normal e operadores sem permissão multi-empresa
         try {
           const res = await api.get('/empresa');
           if (res.data) {
@@ -73,8 +103,9 @@ export function AuthProvider({ children }) {
   };
 
   const switchEmpresa = (empresaId) => {
-    // Apenas Super Admin pode alternar entre licenças
-    if (user?.role !== 'super_admin') return;
+    // Super Admin ou colaboradores autorizados podem alternar entre licenças
+    const canSwitch = user?.role === 'super_admin' || Boolean(user?.pode_alternar_empresa);
+    if (!canSwitch) return;
 
     const selected = empresas.find((e) => Number(e.id) === Number(empresaId));
     if (selected) {
@@ -101,7 +132,7 @@ export function AuthProvider({ children }) {
           const freshUser = res.data;
           setUser(freshUser);
           localStorage.setItem('sisfrete_user', JSON.stringify(freshUser));
-          if (freshUser.empresa_id) {
+          if (freshUser.empresa_id && !localStorage.getItem('sisfrete_active_empresa_id')) {
             localStorage.setItem('sisfrete_active_empresa_id', freshUser.empresa_id);
           }
           await loadEmpresas(freshUser);

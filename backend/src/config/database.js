@@ -88,6 +88,7 @@ function initDatabase() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'operador', -- admin, financeiro, operador, super_admin
+      pode_alternar_empresa INTEGER DEFAULT 0, -- 1 = Pode alternar entre empresas/licenças sem deslogar
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (empresa_id) REFERENCES empresas(id) ON DELETE SET NULL
@@ -785,6 +786,11 @@ function initDatabase() {
     } catch (e) {}
     try {
       db.exec("ALTER TABLE fretes ADD COLUMN xml_evento_cancelamento TEXT");
+    } catch (e) {}
+
+    // Garantir coluna pode_alternar_empresa em users
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN pode_alternar_empresa INTEGER DEFAULT 0");
     } catch (e) {}
 
 
