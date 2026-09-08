@@ -456,132 +456,281 @@ const listTitulos = (req, res) => {
             const isQuitadoFreteiro = f.status_pagamento_motorista === 'quitado' || (valorTotalFreteiro > 0 && valorPagoFreteiro >= valorTotalFreteiro - 0.01);
             const pesoTonFisico = f.peso_kg ? (f.peso_kg / 1000).toFixed(2) : '0.00';
 
-            // Se o frete do motorista for MAIOR do que o valor do CT-e, divide automaticamente em Parcela Fiscal + Parcela Por Fora
-            const temComplementoPorFora = (vTotalReceber > 0 && valorTotalFreteiro > vTotalReceber);
-            const valorFiscalCte = temComplementoPorFora ? vTotalReceber : valorTotalFreteiro;
-            const valorComplementoPorFora = temComplementoPorFora ? Number((valorTotalFreteiro - vTotalReceber).toFixed(2)) : 0;
-
             const valorDescontoFreteiro = Number(f.outros_descontos || 0);
             const motivoDescontoFreteiro = f.motivo_desconto || '';
 
-            if (temComplementoPorFora) {
-              // 2.2.A Parcela 1: Freteiro coberto pelo CT-e Fiscal
-              const pagoCte = Math.min(valorPagoFreteiro, valorFiscalCte);
-              const quitadoCte = isQuitadoFreteiro || pagoCte >= valorFiscalCte - 0.01;
-              const saldoPendenteCte = Math.max(0, Number((valorFiscalCte - (quitadoCte ? valorFiscalCte : pagoCte) - valorDescontoFreteiro).toFixed(2)));
+            const baixasDoFrete = baixasPorFreteId.get(f.id) || [];
 
+            // =========================================================================
+            // CASO A: OPERAÇÃO TRIANGULAR (2 CT-es Vinculados)
+            // =========================================================================
+            if (isTriangular && (f.numero_cte_2 || v2 > 0)) {
+              // Regra de Ouro do Frete Triangular:
+              // 1. CT-e 1 cobre o frete real do motorista até o valor do 1º CT-e (v1)
+              const vCte1Motorista = Math.min(valorTotalFreteiro, v1);
+              // 2. O saldo restante do frete real é descontado do 2º CT-e (v2)
+              const vRestanteMotorista = Math.max(0, Number((valorTotalFreteiro - vCte1Motorista).toFixed(2)));
+              const vCte2Motorista = Math.min(vRestanteMotorista, v2);
+              // 3. Excedente por fora se o frete real total for maior que os 2 CT-es (v1 + v2)
+              const vPorForaTriang = Math.max(0, Number((valorTotalFreteiro - (v1 + v2)).toFixed(2)));
+
+              // Alocação de pagamentos já efetuados ao motorista:
+              const pagoCte1 = isQuitadoFreteiro ? vCte1Motorista : Math.min(valorPagoFreteiro, vCte1Motorista);
+              const quitadoCte1 = isQuitadoFreteiro || (vCte1Motorista > 0 && pagoCte1 >= vCte1Motorista - 0.01);
+              const saldoCte1 = Math.max(0, Number((vCte1Motorista - (quitadoCte1 ? vCte1Motorista : pagoCte1)).toFixed(2)));
+
+              const pagoRestante = Math.max(0, Number((valorPagoFreteiro - vCte1Motorista).toFixed(2)));
+              const pagoCte2 = isQuitadoFreteiro ? vCte2Motorista : Math.min(pagoRestante, vCte2Motorista);
+              const quitadoCte2 = isQuitadoFreteiro || (vCte2Motorista > 0 && pagoCte2 >= vCte2Motorista - 0.01);
+              const saldoCte2 = Math.max(0, Number((vCte2Motorista - (quitadoCte2 ? vCte2Motorista : pagoCte2) - valorDescontoFreteiro).toFixed(2)));
+
+              // Linha 1: Freteiro CT-e 1 (com número real do CT-e 1)
               titulos.push({
-                id: `frete_pag_${f.id}`,
+                id: `frete_pag_cte1_${f.id}`,
                 frete_id: f.id,
                 empresa_id: empresaId,
                 tipo: 'pagar',
                 origem: 'frete_cte',
                 categoria: 'frete_motorista',
-                categoria_nome: 'Frete Terceiro (Valor do CT-e)',
-                descricao: `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t) [Fiscal]`,
+                categoria_nome: 'Frete Terceiro (CT-e 1)',
+                descricao: `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • Placa: ${f.placa_veiculo || 'S/N'})`,
                 pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
                 numero_cte: f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
                 placa_veiculo: f.placa_veiculo,
                 valor_frete_real: valorTotalFreteiro,
-                tipo_parcela: 'fiscal',
+                tipo_parcela: 'cte_1',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
                 cliente_nome_2: f.cliente_nome_2,
                 motorista_nome: f.motorista_nome,
                 favorecido_freteiro_nome: f.favorecido_freteiro_nome,
-                valor: valorFiscalCte,
-                valor_desconto: valorDescontoFreteiro,
-                motivo_desconto: motivoDescontoFreteiro,
-                valor_pago: quitadoCte ? valorFiscalCte : pagoCte,
-                saldo_pendente: saldoPendenteCte,
-                data_emissao: dataEmissaoVal,
-                data_vencimento: dataEmissaoVal,
-                status: (quitadoCte || saldoPendenteCte <= 0.01) ? 'pago' : (pagoCte > 0 ? 'parcial' : 'pendente'),
-                forma_pagamento: 'PIX',
-                is_frete: true,
-                is_triangular: isTriangular
-              });
-
-              // 2.2.B Parcela 2: Pagamento Complementar ("Por Fora")
-              const pagoComp = Math.max(0, Number((valorPagoFreteiro - valorFiscalCte).toFixed(2)));
-              const quitadoComp = isQuitadoFreteiro || pagoComp >= valorComplementoPorFora - 0.01;
-              const saldoPendenteComp = Math.max(0, Number((valorComplementoPorFora - (quitadoComp ? valorComplementoPorFora : pagoComp)).toFixed(2)));
-
-              titulos.push({
-                id: `frete_pag_comp_${f.id}`,
-                frete_id: f.id,
-                empresa_id: empresaId,
-                tipo: 'pagar',
-                origem: 'frete_cte',
-                categoria: 'frete_complemento',
-                categoria_nome: 'Frete Complementar ("Por Fora")',
-                descricao: `Frete Por Fora - CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • Placa: ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t)`,
-                pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
-                numero_cte: f.numero_cte,
-                numero_cte_2: f.numero_cte_2,
-                placa_veiculo: f.placa_veiculo,
-                valor_frete_real: valorTotalFreteiro,
-                tipo_parcela: 'complemento',
-                valor_cte_1: v1,
-                valor_cte_2: v2,
-                cliente_nome: f.cliente_nome,
-                cliente_nome_2: f.cliente_nome_2,
-                motorista_nome: f.motorista_nome,
-                favorecido_freteiro_nome: f.favorecido_freteiro_nome,
-                valor: valorComplementoPorFora,
+                valor: vCte1Motorista,
                 valor_desconto: 0,
                 motivo_desconto: '',
-                valor_pago: quitadoComp ? valorComplementoPorFora : pagoComp,
-                saldo_pendente: saldoPendenteComp,
+                valor_pago: quitadoCte1 ? vCte1Motorista : pagoCte1,
+                saldo_pendente: saldoCte1,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
-                status: quitadoComp ? 'pago' : (pagoComp > 0 ? 'parcial' : 'pendente'),
+                status: (quitadoCte1 || saldoCte1 <= 0.01) ? 'pago' : (pagoCte1 > 0 ? 'parcial' : 'pendente'),
                 forma_pagamento: 'PIX',
                 is_frete: true,
-                is_triangular: isTriangular
+                is_triangular: true,
+                historico_baixas: baixasDoFrete,
+                quantidade_baixas: baixasDoFrete.length
               });
-            } else {
-              // Sem complemento: Linha única de Freteiro
-              const descFreteiro = isTriangular && f.numero_cte_2
-                ? `Freteiro CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2} (${f.placa_veiculo || 'S/N'})`
-                : `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.placa_veiculo || 'S/N'})`;
-              const saldoPendenteUnico = Math.max(0, Number((valorTotalFreteiro - (isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro) - valorDescontoFreteiro).toFixed(2)));
 
+              // Linha 2: Freteiro CT-e 2 (com número real do CT-e 2)
               titulos.push({
-                id: `frete_pag_${f.id}`,
+                id: `frete_pag_cte2_${f.id}`,
                 frete_id: f.id,
                 empresa_id: empresaId,
                 tipo: 'pagar',
                 origem: 'frete_cte',
                 categoria: 'frete_motorista',
-                categoria_nome: 'Frete de Terceiro / Motorista',
-                descricao: descFreteiro,
+                categoria_nome: 'Frete Terceiro (CT-e 2)',
+                descricao: `Freteiro CT-e Nº ${f.numero_cte_2 || 'S/N'} (${f.motorista_nome || 'Motorista'} • Placa: ${f.placa_veiculo || 'S/N'})`,
                 pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
-                numero_cte: f.numero_cte,
+                numero_cte: f.numero_cte_2,
                 numero_cte_2: f.numero_cte_2,
                 placa_veiculo: f.placa_veiculo,
                 valor_frete_real: valorTotalFreteiro,
-                tipo_parcela: 'unico',
+                tipo_parcela: 'cte_2',
                 valor_cte_1: v1,
                 valor_cte_2: v2,
                 cliente_nome: f.cliente_nome,
                 cliente_nome_2: f.cliente_nome_2,
                 motorista_nome: f.motorista_nome,
                 favorecido_freteiro_nome: f.favorecido_freteiro_nome,
-                valor: valorTotalFreteiro,
+                valor: vCte2Motorista,
                 valor_desconto: valorDescontoFreteiro,
                 motivo_desconto: motivoDescontoFreteiro,
-                valor_pago: isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro,
-                saldo_pendente: saldoPendenteUnico,
+                valor_pago: quitadoCte2 ? vCte2Motorista : pagoCte2,
+                saldo_pendente: saldoCte2,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
-                status: (isQuitadoFreteiro || saldoPendenteUnico <= 0.01) ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
+                status: (quitadoCte2 || saldoCte2 <= 0.01) ? 'pago' : (pagoCte2 > 0 ? 'parcial' : 'pendente'),
                 forma_pagamento: 'PIX',
                 is_frete: true,
-                is_triangular: isTriangular
+                is_triangular: true,
+                historico_baixas: baixasDoFrete,
+                quantidade_baixas: baixasDoFrete.length
               });
+
+              // Linha 2.C: Parcela Complementar ("Por Fora") se exceder a soma dos 2 CT-es
+              if (vPorForaTriang > 0) {
+                const pagoComp = Math.max(0, Number((valorPagoFreteiro - v1 - v2).toFixed(2)));
+                const quitadoComp = isQuitadoFreteiro || pagoComp >= vPorForaTriang - 0.01;
+                const saldoComp = Math.max(0, Number((vPorForaTriang - (quitadoComp ? vPorForaTriang : pagoComp)).toFixed(2)));
+
+                titulos.push({
+                  id: `frete_pag_comp_${f.id}`,
+                  frete_id: f.id,
+                  empresa_id: empresaId,
+                  tipo: 'pagar',
+                  origem: 'frete_cte',
+                  categoria: 'frete_complemento',
+                  categoria_nome: 'Frete Complementar ("Por Fora")',
+                  descricao: `Frete Por Fora - CT-e 1 Nº ${f.numero_cte || 'S/N'} + CT-e 2 Nº ${f.numero_cte_2 || 'S/N'} (${f.motorista_nome || 'Motorista'})`,
+                  pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                  numero_cte: f.numero_cte,
+                  numero_cte_2: f.numero_cte_2,
+                  placa_veiculo: f.placa_veiculo,
+                  valor_frete_real: valorTotalFreteiro,
+                  tipo_parcela: 'complemento',
+                  valor_cte_1: v1,
+                  valor_cte_2: v2,
+                  cliente_nome: f.cliente_nome,
+                  cliente_nome_2: f.cliente_nome_2,
+                  motorista_nome: f.motorista_nome,
+                  favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                  valor: vPorForaTriang,
+                  valor_desconto: 0,
+                  motivo_desconto: '',
+                  valor_pago: quitadoComp ? vPorForaTriang : pagoComp,
+                  saldo_pendente: saldoComp,
+                  data_emissao: dataEmissaoVal,
+                  data_vencimento: dataEmissaoVal,
+                  status: quitadoComp ? 'pago' : (pagoComp > 0 ? 'parcial' : 'pendente'),
+                  forma_pagamento: 'PIX',
+                  is_frete: true,
+                  is_triangular: true,
+                  historico_baixas: baixasDoFrete,
+                  quantidade_baixas: baixasDoFrete.length
+                });
+              }
+            } else {
+              // =========================================================================
+              // CASO B: OPERAÇÃO SIMPLES (1 CT-e)
+              // =========================================================================
+              const temComplementoPorFora = (vTotalReceber > 0 && valorTotalFreteiro > vTotalReceber);
+              const valorFiscalCte = temComplementoPorFora ? vTotalReceber : valorTotalFreteiro;
+              const valorComplementoPorFora = temComplementoPorFora ? Number((valorTotalFreteiro - vTotalReceber).toFixed(2)) : 0;
+
+              if (temComplementoPorFora) {
+                // Parcela 1: Freteiro coberto pelo CT-e Fiscal
+                const pagoCte = Math.min(valorPagoFreteiro, valorFiscalCte);
+                const quitadoCte = isQuitadoFreteiro || pagoCte >= valorFiscalCte - 0.01;
+                const saldoPendenteCte = Math.max(0, Number((valorFiscalCte - (quitadoCte ? valorFiscalCte : pagoCte) - valorDescontoFreteiro).toFixed(2)));
+
+                titulos.push({
+                  id: `frete_pag_${f.id}`,
+                  frete_id: f.id,
+                  empresa_id: empresaId,
+                  tipo: 'pagar',
+                  origem: 'frete_cte',
+                  categoria: 'frete_motorista',
+                  categoria_nome: 'Frete Terceiro (Valor do CT-e)',
+                  descricao: `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t) [Fiscal]`,
+                  pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                  numero_cte: f.numero_cte,
+                  numero_cte_2: f.numero_cte_2,
+                  placa_veiculo: f.placa_veiculo,
+                  valor_frete_real: valorTotalFreteiro,
+                  tipo_parcela: 'fiscal',
+                  valor_cte_1: v1,
+                  valor_cte_2: v2,
+                  cliente_nome: f.cliente_nome,
+                  cliente_nome_2: f.cliente_nome_2,
+                  motorista_nome: f.motorista_nome,
+                  favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                  valor: valorFiscalCte,
+                  valor_desconto: valorDescontoFreteiro,
+                  motivo_desconto: motivoDescontoFreteiro,
+                  valor_pago: quitadoCte ? valorFiscalCte : pagoCte,
+                  saldo_pendente: saldoPendenteCte,
+                  data_emissao: dataEmissaoVal,
+                  data_vencimento: dataEmissaoVal,
+                  status: (quitadoCte || saldoPendenteCte <= 0.01) ? 'pago' : (pagoCte > 0 ? 'parcial' : 'pendente'),
+                  forma_pagamento: 'PIX',
+                  is_frete: true,
+                  is_triangular: isTriangular,
+                  historico_baixas: baixasDoFrete,
+                  quantidade_baixas: baixasDoFrete.length
+                });
+
+                // Parcela 2: Pagamento Complementar ("Por Fora")
+                const pagoComp = Math.max(0, Number((valorPagoFreteiro - valorFiscalCte).toFixed(2)));
+                const quitadoComp = isQuitadoFreteiro || pagoComp >= valorComplementoPorFora - 0.01;
+                const saldoPendenteComp = Math.max(0, Number((valorComplementoPorFora - (quitadoComp ? valorComplementoPorFora : pagoComp)).toFixed(2)));
+
+                titulos.push({
+                  id: `frete_pag_comp_${f.id}`,
+                  frete_id: f.id,
+                  empresa_id: empresaId,
+                  tipo: 'pagar',
+                  origem: 'frete_cte',
+                  categoria: 'frete_complemento',
+                  categoria_nome: 'Frete Complementar ("Por Fora")',
+                  descricao: `Frete Por Fora - CT-e Nº ${f.numero_cte || 'S/N'} (${f.motorista_nome || 'Motorista'} • Placa: ${f.placa_veiculo || 'S/N'} • ${pesoTonFisico}t)`,
+                  pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                  numero_cte: f.numero_cte,
+                  numero_cte_2: f.numero_cte_2,
+                  placa_veiculo: f.placa_veiculo,
+                  valor_frete_real: valorTotalFreteiro,
+                  tipo_parcela: 'complemento',
+                  valor_cte_1: v1,
+                  valor_cte_2: v2,
+                  cliente_nome: f.cliente_nome,
+                  cliente_nome_2: f.cliente_nome_2,
+                  motorista_nome: f.motorista_nome,
+                  favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                  valor: valorComplementoPorFora,
+                  valor_desconto: 0,
+                  motivo_desconto: '',
+                  valor_pago: quitadoComp ? valorComplementoPorFora : pagoComp,
+                  saldo_pendente: saldoPendenteComp,
+                  data_emissao: dataEmissaoVal,
+                  data_vencimento: dataEmissaoVal,
+                  status: quitadoComp ? 'pago' : (pagoComp > 0 ? 'parcial' : 'pendente'),
+                  forma_pagamento: 'PIX',
+                  is_frete: true,
+                  is_triangular: isTriangular,
+                  historico_baixas: baixasDoFrete,
+                  quantidade_baixas: baixasDoFrete.length
+                });
+              } else {
+                // Sem complemento: Linha única de Freteiro
+                const descFreteiro = `Freteiro CT-e Nº ${f.numero_cte || 'S/N'} (${f.placa_veiculo || 'S/N'})`;
+                const saldoPendenteUnico = Math.max(0, Number((valorTotalFreteiro - (isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro) - valorDescontoFreteiro).toFixed(2)));
+
+                titulos.push({
+                  id: `frete_pag_${f.id}`,
+                  frete_id: f.id,
+                  empresa_id: empresaId,
+                  tipo: 'pagar',
+                  origem: 'frete_cte',
+                  categoria: 'frete_motorista',
+                  categoria_nome: 'Frete de Terceiro / Motorista',
+                  descricao: descFreteiro,
+                  pessoa_nome: f.favorecido_freteiro_nome || f.motorista_nome || 'Motorista / Parceiro',
+                  numero_cte: f.numero_cte,
+                  numero_cte_2: f.numero_cte_2,
+                  placa_veiculo: f.placa_veiculo,
+                  valor_frete_real: valorTotalFreteiro,
+                  tipo_parcela: 'unico',
+                  valor_cte_1: v1,
+                  valor_cte_2: v2,
+                  cliente_nome: f.cliente_nome,
+                  cliente_nome_2: f.cliente_nome_2,
+                  motorista_nome: f.motorista_nome,
+                  favorecido_freteiro_nome: f.favorecido_freteiro_nome,
+                  valor: valorTotalFreteiro,
+                  valor_desconto: valorDescontoFreteiro,
+                  motivo_desconto: motivoDescontoFreteiro,
+                  valor_pago: isQuitadoFreteiro ? valorTotalFreteiro : valorPagoFreteiro,
+                  saldo_pendente: saldoPendenteUnico,
+                  data_emissao: dataEmissaoVal,
+                  data_vencimento: dataEmissaoVal,
+                  status: (isQuitadoFreteiro || saldoPendenteUnico <= 0.01) ? 'pago' : (valorPagoFreteiro > 0 ? 'parcial' : 'pendente'),
+                  forma_pagamento: 'PIX',
+                  is_frete: true,
+                  is_triangular: isTriangular,
+                  historico_baixas: baixasDoFrete,
+                  quantidade_baixas: baixasDoFrete.length
+                });
+              }
             }
 
             // 2.3 Contas a Pagar: Comissão (se modalidade gestao_pagamentos ou destinatario_comissao_nome preenchido)
@@ -610,18 +759,25 @@ const listTitulos = (req, res) => {
                 cliente_nome_2: f.cliente_nome_2,
                 valor: vCom,
                 valor_pago: isComPaga ? vCom : 0,
+                saldo_pendente: isComPaga ? 0 : vCom,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
                 status: isComPaga ? 'pago' : 'pendente',
                 forma_pagamento: 'PIX',
                 is_frete: true,
-                is_triangular: isTriangular
+                is_triangular: isTriangular,
+                historico_baixas: baixasDoFrete.filter(b => b.tipo_parcela === 'comissao'),
+                quantidade_baixas: baixasDoFrete.filter(b => b.tipo_parcela === 'comissao').length
               });
             }
 
-            // 2.4 Contas a Pagar: Repasse ao Embarcador (se houver)
-            if (Number(f.valor_repasse || 0) > 0) {
-              const vRep = Number(f.valor_repasse);
+            // 2.4 Contas a Pagar: Repasse ao Embarcador (se houver ou se triangular)
+            const vRepCadastrado = Number(f.valor_repasse || 0);
+            const vCte2MotoristaCalc = isTriangular ? Math.min(Math.max(0, valorTotalFreteiro - Math.min(valorTotalFreteiro, v1)), v2) : 0;
+            const vRepTriangCalc = isTriangular ? Math.max(0, Number((v2 - vCte2MotoristaCalc).toFixed(2))) : 0;
+            const vRep = vRepCadastrado > 0 ? vRepCadastrado : vRepTriangCalc;
+
+            if (vRep > 0) {
               const isRepPago = f.status_repasse === 'pago';
               titulos.push({
                 id: `frete_repasse_${f.id}`,
@@ -631,10 +787,12 @@ const listTitulos = (req, res) => {
                 origem: 'frete_cte',
                 categoria: 'repasse_embarcador',
                 categoria_nome: 'Repasse Financeiro / Embarcador',
-                descricao: `Repasse Financeiro CT-e Nº ${f.numero_cte || 'S/N'}`,
+                descricao: isTriangular && f.numero_cte_2 
+                  ? `Repasse Financeiro CT-e Nº ${f.numero_cte_2}` 
+                  : `Repasse Financeiro CT-e Nº ${f.numero_cte || 'S/N'}`,
                 pessoa_nome: f.destinatario_repasse_nome || 'Destinatário do Repasse',
                 pessoa_documento: f.destinatario_repasse_doc || '',
-                numero_cte: f.numero_cte,
+                numero_cte: isTriangular && f.numero_cte_2 ? f.numero_cte_2 : f.numero_cte,
                 numero_cte_2: f.numero_cte_2,
                 placa_veiculo: f.placa_veiculo,
                 valor_frete_real: valorTotalFreteiro,
@@ -645,12 +803,15 @@ const listTitulos = (req, res) => {
                 cliente_nome_2: f.cliente_nome_2,
                 valor: vRep,
                 valor_pago: isRepPago ? vRep : 0,
+                saldo_pendente: isRepPago ? 0 : vRep,
                 data_emissao: dataEmissaoVal,
                 data_vencimento: dataEmissaoVal,
                 status: isRepPago ? 'pago' : 'pendente',
                 forma_pagamento: 'PIX',
                 is_frete: true,
-                is_triangular: isTriangular
+                is_triangular: isTriangular,
+                historico_baixas: baixasDoFrete.filter(b => b.tipo_parcela === 'repasse'),
+                quantidade_baixas: baixasDoFrete.filter(b => b.tipo_parcela === 'repasse').length
               });
             }
           }
@@ -930,10 +1091,12 @@ const baixarTitulo = (req, res) => {
       return res.json({ message: 'Comissão de agenciamento marcada como quitada com sucesso!' });
     }
 
-    // 3. Frete Freteiro a Pagar (frete_pag_15 ou frete_pag_comp_15)
+    // 3. Frete Freteiro a Pagar (frete_pag_15, frete_pag_comp_15, frete_pag_cte1_15, frete_pag_cte2_15)
     if (String(id).startsWith('frete_pag_')) {
       const isComp = String(id).startsWith('frete_pag_comp_');
-      const freteId = Number(id.replace('frete_pag_comp_', '').replace('frete_pag_', ''));
+      const isCte1 = String(id).startsWith('frete_pag_cte1_');
+      const isCte2 = String(id).startsWith('frete_pag_cte2_');
+      const freteId = Number(id.replace('frete_pag_comp_', '').replace('frete_pag_cte1_', '').replace('frete_pag_cte2_', '').replace('frete_pag_', ''));
       if (!freteId || isNaN(freteId)) return res.status(400).json({ error: 'ID de frete inválido.' });
       const frete = db.prepare('SELECT * FROM fretes WHERE id = ? AND (empresa_id = ? OR empresa_id = ?)').get(freteId, empIdNum, empIdStr);
       if (!frete) return res.status(404).json({ error: 'Frete não encontrado.' });
@@ -948,11 +1111,13 @@ const baixarTitulo = (req, res) => {
         VALUES (?, ?, 'saldo_final', ?, ?, ?, ?, ?)
       `).run(empresaId, freteId, vBaixa, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
 
+      const tipoParcelaBaixa = isComp ? 'por_fora' : isCte1 ? 'cte_1' : isCte2 ? 'cte_2' : 'fiscal';
+
       db.prepare(`
         INSERT INTO financeiro_baixas_historico (
           empresa_id, frete_id, tipo_titulo, tipo_parcela, valor, data_pagamento, forma_pagamento, comprovante_ref, observacoes
         ) VALUES (?, ?, 'pagar', ?, ?, ?, ?, ?, ?)
-      `).run(empresaId, freteId, isComp ? 'por_fora' : 'fiscal', vBaixa, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
+      `).run(empresaId, freteId, tipoParcelaBaixa, vBaixa, dataPag, forma_pagamento || 'PIX', comprovante_ref || null, observacoes || null);
 
       const novoTotalPago = Number((jaPagoAnt + vBaixa).toFixed(2));
       const novoSaldo = Math.max(0, Number((vTotal - novoTotalPago).toFixed(2)));
@@ -1188,7 +1353,7 @@ const salvarDescontoTitulo = (req, res) => {
     const motivoStr = String(motivo_desconto || '').trim();
 
     if (String(id).startsWith('frete_')) {
-      const freteId = Number(String(id).replace('frete_pag_comp_', '').replace('frete_pag_', '').replace('frete_rec_', '').replace('frete_comissao_', '').replace('frete_repasse_', ''));
+      const freteId = Number(String(id).replace('frete_pag_comp_', '').replace('frete_pag_cte1_', '').replace('frete_pag_cte2_', '').replace('frete_pag_', '').replace('frete_rec2_', '').replace('frete_rec_', '').replace('frete_comissao_', '').replace('frete_repasse_', ''));
       if (!freteId || isNaN(freteId)) return res.status(400).json({ error: 'ID de frete inválido.' });
 
       db.prepare(`

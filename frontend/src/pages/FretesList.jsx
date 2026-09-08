@@ -960,12 +960,18 @@ ${docSection}
               </div>
 
               {/* Demonstrativo Financeiro do Frete */}
-              {selectedFreteDetalhes.tipo_operacao === 'agenciamento_repasse' || selectedFreteDetalhes.valor_frete_real > 0 ? (
+              {selectedFreteDetalhes.tipo_operacao === 'agenciamento_repasse' || selectedFreteDetalhes.tipo_operacao === 'triangular' || selectedFreteDetalhes.valor_frete_real > 0 ? (
                 <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/40 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="font-bold text-white uppercase text-xs">Metodologia: Agenciamento & Repasse (Comissão 5%)</p>
+                    <p className="font-bold text-white uppercase text-xs">
+                      {selectedFreteDetalhes.tipo_operacao === 'triangular'
+                        ? 'Metodologia: Frete Triangular (2 CT-es Vinculados)'
+                        : 'Metodologia: Agenciamento & Repasse (Comissão 5%)'}
+                    </p>
                     <span className="font-mono text-xs text-indigo-300 font-bold">
-                      CT-e: {formatMoney(selectedFreteDetalhes.valor_frete_venda)}
+                      {selectedFreteDetalhes.tipo_operacao === 'triangular'
+                        ? `CT-es: ${formatMoney((Number(selectedFreteDetalhes.valor_frete_venda || 0) + Number(selectedFreteDetalhes.valor_frete_venda_2 || 0)))}`
+                        : `CT-e: ${formatMoney(selectedFreteDetalhes.valor_frete_venda)}`}
                     </span>
                   </div>
 
@@ -977,15 +983,32 @@ ${docSection}
                       </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                      <p className="text-purple-300 text-[10px] uppercase font-semibold">2. Sua Comissão ({selectedFreteDetalhes.percentual_comissao || 5}%)</p>
+                      <p className="text-purple-300 text-[10px] uppercase font-semibold">
+                        {selectedFreteDetalhes.tipo_operacao === 'triangular'
+                          ? `CT-e 1 (Nº ${selectedFreteDetalhes.numero_cte || 'S/N'})`
+                          : `2. Sua Comissão (${selectedFreteDetalhes.percentual_comissao || 5}%)`}
+                      </p>
                       <p className="text-sm font-bold text-purple-400 mt-0.5 font-mono">
-                        {formatMoney(selectedFreteDetalhes.valor_comissao)}
+                        {selectedFreteDetalhes.tipo_operacao === 'triangular'
+                          ? formatMoney(selectedFreteDetalhes.valor_frete_venda)
+                          : formatMoney(selectedFreteDetalhes.valor_comissao)}
                       </p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-slate-900 border border-indigo-500/40">
-                      <p className="text-indigo-300 text-[10px] uppercase font-semibold">3. Valor de Repasse</p>
+                      <p className="text-indigo-300 text-[10px] uppercase font-semibold">
+                        {selectedFreteDetalhes.tipo_operacao === 'triangular'
+                          ? `Repasse s/ CT-e 2 (Nº ${selectedFreteDetalhes.numero_cte_2 || 'S/N'})`
+                          : '3. Valor de Repasse'}
+                      </p>
                       <p className="text-sm font-bold text-indigo-400 mt-0.5 font-mono">
-                        {formatMoney(selectedFreteDetalhes.valor_repasse || Math.max(0, selectedFreteDetalhes.valor_frete_venda - (selectedFreteDetalhes.valor_frete_real || selectedFreteDetalhes.valor_frete_compra) - selectedFreteDetalhes.valor_comissao))}
+                        {formatMoney(
+                          selectedFreteDetalhes.valor_repasse ||
+                          Math.max(0,
+                            selectedFreteDetalhes.tipo_operacao === 'triangular'
+                              ? Number((Number(selectedFreteDetalhes.valor_frete_venda_2 || 0) - Math.min(Math.max(0, Number(selectedFreteDetalhes.valor_frete_real || 0) - Math.min(Number(selectedFreteDetalhes.valor_frete_real || 0), Number(selectedFreteDetalhes.valor_frete_venda || 0))), Number(selectedFreteDetalhes.valor_frete_venda_2 || 0))).toFixed(2))
+                              : (selectedFreteDetalhes.valor_frete_venda - (selectedFreteDetalhes.valor_frete_real || selectedFreteDetalhes.valor_frete_compra) - (selectedFreteDetalhes.valor_comissao || 0))
+                          )
+                        )}
                       </p>
                     </div>
                   </div>

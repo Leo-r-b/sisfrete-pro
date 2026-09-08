@@ -102,9 +102,20 @@ export default function ReciboModal({ frete, isOpen, onClose }) {
     : isAgenciamento
       ? Number((freteReal * (pctComissao / 100)).toFixed(2))
       : Number(f.valor_comissao || Math.max(0, totalCte - freteReal));
-  const valorRepasse = isAgenciamento
-    ? (f.valor_repasse !== undefined && f.valor_repasse !== null && f.valor_repasse !== '' ? Number(f.valor_repasse) : Math.max(0, totalCte - freteReal - valorComissao))
-    : Number(f.valor_repasse || 0);
+
+  // Regra Matemática da Operação Triangular (Rateio exato entre os 2 CT-es):
+  // 1. CT-e 1 cobre o frete do motorista até o valor do 1º CT-e (v1)
+  const valorCte1Motorista = isTriangular ? Math.min(freteReal, v1) : freteReal;
+  // 2. O saldo restante do frete do motorista desconta do 2º CT-e (v2)
+  const valorCte2Motorista = isTriangular ? Math.min(Math.max(0, Number((freteReal - valorCte1Motorista).toFixed(2))), v2) : 0;
+  // 3. O saldo remanescente do 2º CT-e é o Repasse ao Destinatário/Embarcador
+  const repasseTriangularCalc = isTriangular ? Math.max(0, Number((v2 - valorCte2Motorista).toFixed(2))) : 0;
+
+  const valorRepasse = isTriangular
+    ? (Number(f.valor_repasse || 0) > 0 ? Number(f.valor_repasse) : repasseTriangularCalc)
+    : (isAgenciamento
+        ? (f.valor_repasse !== undefined && f.valor_repasse !== null && f.valor_repasse !== '' ? Number(f.valor_repasse) : Math.max(0, totalCte - freteReal - valorComissao))
+        : Number(f.valor_repasse || 0));
 
   const valorSaldoMotorista = (f.valor_saldo_motorista !== undefined && f.valor_saldo_motorista !== null && Number(f.valor_saldo_motorista) > 0)
     ? Number(f.valor_saldo_motorista)
@@ -147,6 +158,19 @@ ${cteDetails}
 💰 *Total CT-es Fiscais:* ${formatMoney(totalCte)}`;
       }
 
+      let discriminacaoTexto = '';
+      if (isTriangular) {
+        discriminacaoTexto = `• *Total dos CT-es Fiscais:* ${formatMoney(totalCte)}
+• *Valor do Frete Real (Motorista):* ${formatMoney(freteReal)}
+  ↳ CT-e 1 Nº ${f.numero_cte || 'S/N'}: ${formatMoney(valorCte1Motorista)}
+  ↳ CT-e 2 Nº ${f.numero_cte_2 || 'S/N'}: ${formatMoney(valorCte2Motorista)}
+• *Disponível para Repasse (sobre CT-e 2):* ${formatMoney(valorRepasse)}
+${freteReal > totalCte ? `• *Complemento Por Fora:* ${formatMoney(freteReal - totalCte)}\n` : ''}`;
+      } else {
+        discriminacaoTexto = `• *Parcela Fiscal CT-e:* ${formatMoney(totalCte)}
+${freteReal > totalCte ? `• *Complemento Por Fora:* ${formatMoney(freteReal - totalCte)}\n` : ''}${valorComissao > 0 ? `• *Comissão Agência:* ${formatMoney(valorComissao)}\n` : ''}${valorRepasse > 0 ? `• *Repasse Parceiro:* ${formatMoney(valorRepasse)}\n` : ''}`;
+      }
+
       return `🏢 *DEMONSTRATIVO DE CUSTOS & RATEIO (VISÃO EMPRESA)*
 ---------------------------------------
 ${cteDetails}
@@ -154,9 +178,8 @@ ${cteDetails}
 🚛 *Veículo:* ${f.placa_veiculo || 'N/I'} | Motorista: ${f.motorista_nome || 'N/I'}
 
 💵 *DISCRIMINAÇÃO DOS CUSTOS:*
-• *Parcela Fiscal CT-e:* ${formatMoney(totalCte)}
-${freteReal > totalCte ? `• *Complemento Por Fora:* ${formatMoney(freteReal - totalCte)}\n` : ''}${valorComissao > 0 ? `• *Comissão Agência:* ${formatMoney(valorComissao)}\n` : ''}${valorRepasse > 0 ? `• *Repasse Parceiro:* ${formatMoney(valorRepasse)}\n` : ''}---------------------------------------
-💰 *CUSTO TOTAL OPERAÇÃO: ${formatMoney(Math.max(totalCte, freteReal) + valorComissao + valorRepasse)}*
+${discriminacaoTexto}---------------------------------------
+💰 *TOTAL DA OPERAÇÃO: ${formatMoney(Math.max(totalCte, freteReal))}*
 ---------------------------------------
 *${nomeFantasia || razaoSocial}*`;
     }
@@ -758,38 +781,121 @@ ${cteHeader}
                       <th className="p-1.5 text-right">Valor (R$)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    <tr>
-                      <td className="p-1.5 font-semibold text-slate-800">
-                        1. Parcela Fiscal do CT-e ({isTriangular ? `CT-e 1 Nº ${f.numero_cte} + CT-e 2 Nº ${f.numero_cte_2}` : `CT-e Nº ${f.numero_cte || 'S/N'}`})
-                      </td>
-                      <td className="p-1.5 text-right font-black text-slate-900">{formatMoney(totalCte)}</td>
-                    </tr>
-                    {freteReal > totalCte && (
-                      <tr className="bg-amber-50 text-amber-950">
-                        <td className="p-1.5 font-bold">2. Parcela Complementar ("Por Fora")</td>
-                        <td className="p-1.5 text-right font-mono font-black text-amber-800">{formatMoney(freteReal - totalCte)}</td>
+                  {isTriangular ? (
+                    <tbody className="divide-y divide-slate-200">
+                      {/* 1. Linha do CT-e 1 */}
+                      <tr>
+                        <td className="p-1.5 font-semibold text-slate-800">
+                          <div className="flex items-center justify-between">
+                            <span>1. Parcela CT-e 1 (Nº {f.numero_cte || 'S/N'})</span>
+                            <span className="text-[8.5px] font-normal text-slate-500 font-mono">Fiscal: {formatMoney(v1)}</span>
+                          </div>
+                          <span className="text-[9px] text-blue-700 font-medium block">
+                            ↳ Parcela Freteiro coberta pelo 1º CT-e
+                          </span>
+                        </td>
+                        <td className="p-1.5 text-right font-bold text-slate-900 font-mono">
+                          {formatMoney(valorCte1Motorista)}
+                        </td>
                       </tr>
-                    )}
-                    {valorComissao > 0 && (
-                      <tr className="bg-purple-50 text-purple-950">
-                        <td className="p-1.5 font-bold">3. Comissão de Agenciamento ({f.destinatario_comissao_nome || 'Agência'})</td>
-                        <td className="p-1.5 text-right font-mono font-black text-purple-800">{formatMoney(valorComissao)}</td>
+
+                      {/* 2. Linha do CT-e 2 */}
+                      <tr>
+                        <td className="p-1.5 font-semibold text-slate-800">
+                          <div className="flex items-center justify-between">
+                            <span>2. Parcela CT-e 2 (Nº {f.numero_cte_2 || 'S/N'})</span>
+                            <span className="text-[8.5px] font-normal text-slate-500 font-mono">Fiscal: {formatMoney(v2)}</span>
+                          </div>
+                          <span className="text-[9px] text-purple-700 font-medium block">
+                            ↳ Parcela Freteiro descontada do 2º CT-e
+                          </span>
+                        </td>
+                        <td className="p-1.5 text-right font-bold text-slate-900 font-mono">
+                          {formatMoney(valorCte2Motorista)}
+                        </td>
                       </tr>
-                    )}
-                    {valorRepasse > 0 && (
-                      <tr className="bg-indigo-50 text-indigo-950">
-                        <td className="p-1.5 font-bold">4. Repasse ({f.destinatario_repasse_nome || 'Destinatário'})</td>
-                        <td className="p-1.5 text-right font-mono font-black text-indigo-800">{formatMoney(valorRepasse)}</td>
+
+                      {/* Linha abaixo: Valor do Frete Real */}
+                      <tr className="bg-blue-50/70 text-blue-950 font-bold border-t border-b border-blue-200">
+                        <td className="p-1.5">
+                          <span>Valor do Frete Real (Transportador / Motorista)</span>
+                          <span className="block text-[8.5px] font-normal text-blue-800 font-mono">
+                            Frete total acordado: {formatMoney(valorCte1Motorista)} + {formatMoney(valorCte2Motorista)}
+                          </span>
+                        </td>
+                        <td className="p-1.5 text-right font-mono font-black text-blue-900">
+                          {formatMoney(freteReal)}
+                        </td>
                       </tr>
-                    )}
-                    <tr className="bg-slate-900 text-white font-bold text-[11px]">
-                      <td className="p-2 uppercase">CUSTO TOTAL OPERACIONAL</td>
-                      <td className="p-2 text-right text-emerald-300 font-mono text-xs font-black">
-                        {formatMoney(Math.max(totalCte, freteReal) + valorComissao + valorRepasse)}
-                      </td>
-                    </tr>
-                  </tbody>
+
+                      {/* Linha abaixo: Disponível para Repasse */}
+                      <tr className="bg-purple-50 text-purple-950 font-bold">
+                        <td className="p-1.5">
+                          <span>Disponível para Repasse {f.destinatario_repasse_nome ? `(${f.destinatario_repasse_nome})` : ''}</span>
+                          <span className="block text-[8.5px] font-normal text-purple-800 font-mono">
+                            Repasse sobre CT-e 2 Nº {f.numero_cte_2 || 'S/N'} ({formatMoney(v2)} - {formatMoney(valorCte2Motorista)})
+                          </span>
+                        </td>
+                        <td className="p-1.5 text-right font-mono font-black text-purple-900">
+                          {formatMoney(valorRepasse)}
+                        </td>
+                      </tr>
+
+                      {/* Parcela Por Fora se frete real ultrapassar os dois CT-es */}
+                      {freteReal > totalCte && (
+                        <tr className="bg-amber-50 text-amber-950 font-bold">
+                          <td className="p-1.5">Parcela Complementar ("Por Fora")</td>
+                          <td className="p-1.5 text-right font-mono font-black text-amber-800">{formatMoney(freteReal - totalCte)}</td>
+                        </tr>
+                      )}
+
+                      {/* Total da Operação */}
+                      <tr className="bg-slate-900 text-white font-bold text-[11px]">
+                        <td className="p-2 uppercase">
+                          <span>TOTAL DA OPERAÇÃO (2 CT-es)</span>
+                          <span className="block text-[8px] font-normal text-slate-400 font-mono">
+                            Frete Real ({formatMoney(freteReal)}) + Repasse ({formatMoney(valorRepasse)})
+                          </span>
+                        </td>
+                        <td className="p-2 text-right text-emerald-300 font-mono text-xs font-black">
+                          {formatMoney(Math.max(totalCte, freteReal))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  ) : (
+                    <tbody className="divide-y divide-slate-200">
+                      <tr>
+                        <td className="p-1.5 font-semibold text-slate-800">
+                          1. Parcela Fiscal do CT-e (Nº {f.numero_cte || 'S/N'})
+                        </td>
+                        <td className="p-1.5 text-right font-black text-slate-900">{formatMoney(totalCte)}</td>
+                      </tr>
+                      {freteReal > totalCte && (
+                        <tr className="bg-amber-50 text-amber-950">
+                          <td className="p-1.5 font-bold">2. Parcela Complementar ("Por Fora")</td>
+                          <td className="p-1.5 text-right font-mono font-black text-amber-800">{formatMoney(freteReal - totalCte)}</td>
+                        </tr>
+                      )}
+                      {valorComissao > 0 && (
+                        <tr className="bg-purple-50 text-purple-950">
+                          <td className="p-1.5 font-bold">3. Comissão de Agenciamento ({f.destinatario_comissao_nome || 'Agência'})</td>
+                          <td className="p-1.5 text-right font-mono font-black text-purple-800">{formatMoney(valorComissao)}</td>
+                        </tr>
+                      )}
+                      {valorRepasse > 0 && (
+                        <tr className="bg-indigo-50 text-indigo-950">
+                          <td className="p-1.5 font-bold">4. Repasse ({f.destinatario_repasse_nome || 'Destinatário'})</td>
+                          <td className="p-1.5 text-right font-mono font-black text-indigo-800">{formatMoney(valorRepasse)}</td>
+                        </tr>
+                      )}
+                      <tr className="bg-slate-900 text-white font-bold text-[11px]">
+                        <td className="p-2 uppercase">CUSTO TOTAL OPERACIONAL</td>
+                        <td className="p-2 text-right text-emerald-300 font-mono text-xs font-black">
+                          {formatMoney(Math.max(totalCte, freteReal) + (isAgenciamento ? 0 : valorComissao))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  )}
                 </table>
 
                 {/* Subtabela de Baixas Pagas pela Empresa */}
@@ -801,7 +907,7 @@ ${cteHeader}
                     <div className="space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-200 font-mono text-[9.5px]">
                       {(f.historico_baixas || f.adiantamentos_historico || []).map((bx, i) => (
                         <div key={i} className="flex items-center justify-between text-slate-700 border-b border-slate-200 last:border-0 pb-0.5">
-                          <span>{bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} • {bx.tipo_parcela === 'por_fora' ? 'Por Fora' : 'Fiscal'} ({bx.forma_pagamento || 'PIX'})</span>
+                          <span>{bx.data_pagamento ? new Date(bx.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '-'} • {bx.tipo_parcela === 'por_fora' ? 'Por Fora' : bx.tipo_parcela === 'cte_1' ? 'CT-e 1' : bx.tipo_parcela === 'cte_2' ? 'CT-e 2' : bx.tipo_parcela === 'repasse' ? 'Repasse' : 'Fiscal'} ({bx.forma_pagamento || 'PIX'})</span>
                           <strong className="text-emerald-700">{formatMoney(bx.valor)}</strong>
                         </div>
                       ))}
@@ -838,9 +944,13 @@ ${cteHeader}
                     <tr>
                       <td className="p-1.5 font-semibold text-slate-800">
                         Valor Total do Frete Contratado
-                        {isTriangular && <span className="block text-[8.5px] text-slate-500 font-normal">CT-e 1 Nº {f.numero_cte || 'S/N'} + CT-e 2 Nº {f.numero_cte_2 || 'S/N'}</span>}
+                        {isTriangular && (
+                          <span className="block text-[8.5px] text-slate-500 font-normal font-mono">
+                            CT-e 1 Nº {f.numero_cte || 'S/N'}: {formatMoney(valorCte1Motorista)} | CT-e 2 Nº {f.numero_cte_2 || 'S/N'}: {formatMoney(valorCte2Motorista)}
+                          </span>
+                        )}
                       </td>
-                      <td className="p-1.5 text-right font-bold text-slate-900">{formatMoney(freteReal)}</td>
+                      <td className="p-1.5 text-right font-bold text-slate-900 font-mono">{formatMoney(freteReal)}</td>
                     </tr>
                     {f.valor_adiantamento > 0 && (
                       <tr className="text-blue-700 bg-blue-50/50">

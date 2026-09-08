@@ -389,6 +389,11 @@ _Favor enviar o comprovante de pagamento após a transferência._
         onOpenRecibo({
           ...res.data,
           ...t,
+          numero_cte: res.data.numero_cte || t.numero_cte,
+          numero_cte_2: res.data.numero_cte_2 || t.numero_cte_2,
+          valor_frete_venda: res.data.valor_frete_venda || t.valor_cte_1,
+          valor_frete_venda_2: res.data.valor_frete_venda_2 || t.valor_cte_2,
+          valor_frete_real: res.data.valor_frete_real || t.valor_frete_real,
           id: targetId,
           frete_id: targetId,
           tipo: t.tipo || activeSubTab,
@@ -447,9 +452,9 @@ _Favor enviar o comprovante de pagamento após a transferência._
 
     if (cat === 'frete_motorista') {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-950/40 border border-blue-500/40 text-blue-300 shadow-sm" title="Frete Terceiro (Valor do CT-e)">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-950/40 border border-blue-500/40 text-blue-300 shadow-sm" title={nome || "Frete Terceiro (Valor do CT-e)"}>
           <Truck className="h-3 w-3 text-blue-400" />
-          <span>Frete CT-e Fiscal</span>
+          <span>{nome || 'Frete CT-e Fiscal'}</span>
         </span>
       );
     }
@@ -557,7 +562,9 @@ _Favor enviar o comprovante de pagamento após a transferência._
     const isVencido = !isQuitado && t.data_vencimento && t.data_vencimento < new Date().toISOString().slice(0, 10);
 
     const isPorFora = t.tipo_parcela === 'complemento' || t.categoria === 'frete_complemento' || t.descricao?.toLowerCase().includes('por fora');
-    const isFiscal = t.tipo_parcela === 'fiscal' || (t.categoria === 'frete_motorista' && isMultiplasParcelas);
+    const isCte1 = t.tipo_parcela === 'cte_1';
+    const isCte2 = t.tipo_parcela === 'cte_2';
+    const isFiscal = !isCte1 && !isCte2 && (t.tipo_parcela === 'fiscal' || (t.categoria === 'frete_motorista' && isMultiplasParcelas));
     const isComissao = t.tipo_parcela === 'comissao' || t.categoria === 'comissao_agenciamento';
     const isRepasse = t.tipo_parcela === 'repasse' || t.categoria === 'repasse_embarcador';
 
@@ -588,6 +595,42 @@ _Favor enviar o comprovante de pagamento após a transferência._
                   </div>
                   <span className="text-[9.5px] text-amber-300/70 block">
                     Diferença acordada s/ CT-e Fiscal
+                  </span>
+                </div>
+              </div>
+            ) : isCte1 ? (
+              <div className="flex items-start gap-1.5 py-0.5">
+                <span className="text-blue-400 font-black text-xs mt-0.5">1.</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Truck className="h-2.5 w-2.5" />
+                      CT-e 1 Fiscal (Nº {t.numero_cte || 'S/N'})
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                  <span className="text-[9.5px] text-blue-300/70 block">
+                    Valor integral coberto pelo 1º CT-e (Nº {t.numero_cte || 'S/N'})
+                  </span>
+                </div>
+              </div>
+            ) : isCte2 ? (
+              <div className="flex items-start gap-1.5 py-0.5 pl-3">
+                <span className="text-purple-400 font-black text-xs mt-0.5">2.</span>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-bold inline-flex items-center gap-1">
+                      <Truck className="h-2.5 w-2.5" />
+                      CT-e 2 Fiscal (Nº {t.numero_cte || 'S/N'})
+                    </span>
+                    <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
+                      {t.descricao}
+                    </p>
+                  </div>
+                  <span className="text-[9.5px] text-purple-300/70 block">
+                    Saldo restante do frete deduzido do 2º CT-e (Nº {t.numero_cte || 'S/N'})
                   </span>
                 </div>
               </div>
@@ -626,17 +669,24 @@ _Favor enviar o comprovante de pagamento após a transferência._
               </div>
             ) : isRepasse ? (
               <div className="flex items-start gap-1.5 pl-3 py-0.5">
-                <span className="text-indigo-400 font-black text-sm leading-none mt-0.5">↳</span>
+                <span className="text-indigo-400 font-black text-sm leading-none mt-0.5">
+                  {t.is_triangular ? '3.' : '↳'}
+                </span>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-[9px] font-bold inline-flex items-center gap-1">
                       <Repeat className="h-2.5 w-2.5" />
-                      Repasse Financeiro
+                      {t.is_triangular ? `Repasse sobre CT-e 2 (Nº ${t.numero_cte || 'S/N'})` : 'Repasse Financeiro'}
                     </span>
                     <p className="font-bold text-white text-xs truncate max-w-[200px]" title={t.descricao}>
                       {t.descricao}
                     </p>
                   </div>
+                  {t.is_triangular && (
+                    <span className="text-[9.5px] text-indigo-300/70 block">
+                      Disponível para repasse do 2º CT-e após dedução do frete
+                    </span>
+                  )}
                 </div>
               </div>
             ) : t.is_triangular ? (
@@ -700,7 +750,22 @@ _Favor enviar o comprovante de pagamento após a transferência._
             <span className={`font-bold text-xs ${t.tipo === 'receber' ? 'text-emerald-400' : 'text-slate-200'}`}>
               {formatMoney(valorTotal)}
             </span>
-            {t.is_triangular && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
+            {t.is_triangular && isCte1 && (
+              <span className="text-[8.5px] text-blue-300/80 block font-normal">
+                (CT-e 1: {formatMoney(t.valor_cte_1 || valorTotal)})
+              </span>
+            )}
+            {t.is_triangular && isCte2 && (
+              <span className="text-[8.5px] text-purple-300/80 block font-normal">
+                (Parte Frete s/ CT-e 2)
+              </span>
+            )}
+            {t.is_triangular && isRepasse && (
+              <span className="text-[8.5px] text-indigo-300/80 block font-normal">
+                (Repasse s/ CT-e 2: {formatMoney(valorTotal)})
+              </span>
+            )}
+            {t.is_triangular && !isCte1 && !isCte2 && !isRepasse && (t.valor_cte_1 > 0 || t.valor_cte_2 > 0) && (
               <span className="text-[8.5px] text-slate-400 block font-normal">
                 (CT-es: {formatMoney(t.valor_cte_1)} | {formatMoney(t.valor_cte_2)})
               </span>
@@ -1510,7 +1575,10 @@ _Favor enviar o comprovante de pagamento após a transferência._
                                   )}
                                   {isMultiplasParcelas && (
                                     <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-slate-700/60 text-slate-300 border border-slate-600 font-medium">
-                                      {grupo.titulos.length} parcelas vinculadas (CT-e + Por Fora / Complementos)
+                                      {grupo.is_triangular 
+                                        ? `${grupo.titulos.length} parcelas vinculadas (CT-e 1 + CT-e 2 + Repasse)` 
+                                        : `${grupo.titulos.length} parcelas vinculadas (CT-e + Por Fora / Complementos)`
+                                      }
                                     </span>
                                   )}
                                 </div>
